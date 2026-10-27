@@ -1,0 +1,341 @@
+<title>3UZ Miata Cooling Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: dyno control sheet — control rail left, readout strip + traces right; stacks on phones */
+:root {
+  --bg: #eef2f0; --surface: #ffffff; --sunk: #e3e9e6; --ink: #16201b; --muted: #5a6a62; --line: #d0d9d4;
+  --accent: #0e8a5e; --accent-ink: #ffffff; --hot: #cf3f25; --warn: #b9770a; --oil: #b57d06; --cold: #2b67ad; --violet: #7651b8;
+  --good-bg: #dcf1e7; --warn-bg: #f8ecd2; --crit-bg: #f9dcd5;
+  --f-display: "Barlow Semi Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r: 6px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0d1211; --surface: #151c1a; --sunk: #1b2421; --ink: #e2eae6; --muted: #8fa097; --line: #26312d;
+  --accent: #3cc08d; --accent-ink: #06130e; --hot: #ff6b4f; --warn: #e3a634; --oil: #e6aa2c; --cold: #64a0e6; --violet: #a989e8;
+  --good-bg: #133227; --warn-bg: #3a2c10; --crit-bg: #3d1a13; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0d1211; --surface: #151c1a; --sunk: #1b2421; --ink: #e2eae6; --muted: #8fa097; --line: #26312d;
+  --accent: #3cc08d; --accent-ink: #06130e; --hot: #ff6b4f; --warn: #e3a634; --oil: #e6aa2c; --cold: #64a0e6; --violet: #a989e8;
+  --good-bg: #133227; --warn-bg: #3a2c10; --crit-bg: #3d1a13; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--f-body); margin: 0; }
+.wrap { max-width: 1320px; margin: 0 auto; padding-block: 20px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; margin-bottom: 16px; }
+h1 { font: 700 clamp(24px, 3.4vw, 34px)/1.05 var(--f-display); letter-spacing: .01em; margin: 0; text-wrap: balance; }
+h1 small { display: block; font: 500 13px/1.3 var(--f-mono); color: var(--muted); letter-spacing: 0; margin-top: 6px; }
+.grid { display: grid; grid-template-columns: minmax(290px, 360px) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.rail { display: flex; flex-direction: column; gap: 12px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+details.panel > summary { list-style: none; cursor: pointer; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;
+  font: 600 13px/1 var(--f-display); text-transform: uppercase; letter-spacing: .09em; color: var(--muted); }
+details.panel > summary::-webkit-details-marker { display: none; }
+details.panel > summary::after { content: "+"; font: 500 16px var(--f-mono); }
+details[open].panel > summary::after { content: "–"; }
+details.panel > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.controls { display: flex; flex-direction: column; gap: 14px; padding: 4px 14px 16px; }
+.ctl { display: flex; flex-direction: column; gap: 4px; }
+.ctl-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.ctl label { font: 500 14px/1.2 var(--f-body); }
+.ctl .val { font: 600 14px/1 var(--f-mono); font-variant-numeric: tabular-nums; color: var(--accent); white-space: nowrap; }
+.ctl .hint { font: 400 12px/1.35 var(--f-body); color: var(--muted); }
+.ctl .ends { display: flex; justify-content: space-between; font: 400 11px/1 var(--f-mono); color: var(--muted); }
+input[type=range] { width: 100%; accent-color: var(--accent); margin: 2px 0; }
+input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.ctl.off { opacity: .45; }
+.toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.switch { position: relative; width: 42px; height: 24px; flex: none; }
+.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.switch span { position: absolute; inset: 0; border-radius: 12px; background: var(--sunk); border: 1px solid var(--line); transition: background .15s; pointer-events: none; }
+.switch span::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--muted); transition: transform .15s, background .15s; }
+.switch input:checked + span { background: var(--accent); border-color: var(--accent); }
+.switch input:checked + span::after { transform: translateX(18px); background: var(--accent-ink); }
+.switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.seg { display: flex; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.seg button { flex: 1; border: 0; background: var(--surface); color: var(--ink); font: 500 13px var(--f-body); padding: 7px 6px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed=true] { background: var(--accent); color: var(--accent-ink); }
+.seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 14px 14px; }
+.chipbtn { border: 1px solid var(--line); background: var(--sunk); color: var(--ink); border-radius: 999px; padding: 5px 11px; font: 500 13px var(--f-body); cursor: pointer; }
+.chipbtn:hover { border-color: var(--accent); }
+.chipbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.actions { position: sticky; bottom: 0; display: flex; gap: 8px; padding: 10px 0 calc(10px + env(safe-area-inset-bottom, 0px)); background: var(--bg); z-index: 5; }
+.btn { flex: 1; border: 0; border-radius: var(--r); padding: 12px 14px; font: 700 15px/1 var(--f-display); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); }
+.btn.ghost { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.verdict { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; padding: 14px 16px; border-radius: var(--r); border: 1px solid var(--line); background: var(--surface); }
+.pill { font: 700 13px/1 var(--f-display); letter-spacing: .08em; text-transform: uppercase; padding: 6px 10px; border-radius: 999px; }
+.pill.good { background: var(--good-bg); color: var(--accent); }
+.pill.warn { background: var(--warn-bg); color: var(--warn); }
+.pill.crit { background: var(--crit-bg); color: var(--hot); }
+.verdict p { margin: 0; flex: 1 1 280px; min-width: 0; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.stat { background: var(--surface); padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+.stat .k { font: 600 11px/1.2 var(--f-display); text-transform: uppercase; letter-spacing: .09em; color: var(--muted); }
+.stat .v { font: 600 24px/1 var(--f-mono); font-variant-numeric: tabular-nums; }
+.stat .v small { font-size: 13px; color: var(--muted); font-weight: 500; }
+.stat .s { font: 400 12px/1.3 var(--f-mono); color: var(--muted); }
+.charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.charts .wide { grid-column: 1 / -1; }
+@media (max-width: 700px) { .charts { grid-template-columns: minmax(0, 1fr); } }
+.chart { padding: 12px 12px 8px; min-width: 0; }
+.chart h3 { margin: 0 0 6px 4px; font: 600 14px/1.2 var(--f-display); letter-spacing: .04em; text-transform: uppercase; }
+.chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 4px 2px; font: 400 12px/1.3 var(--f-body); color: var(--muted); }
+.legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+.runs { display: flex; flex-wrap: wrap; gap: 6px; }
+.run { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 4px 6px 4px 10px; font: 400 12px/1.2 var(--f-body); max-width: 100%; }
+.run b { font: 600 12px var(--f-mono); }
+.run .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.run button { border: 0; background: var(--sunk); color: var(--muted); width: 22px; height: 22px; border-radius: 50%; cursor: pointer; font: 500 14px/1 var(--f-mono); }
+.run span.lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.notes { font: 400 13px/1.5 var(--f-body); color: var(--muted); padding: 12px 16px; }
+.notes p { margin: 0 0 6px; max-width: 75ch; }
+.empty { padding: 40px; text-align: center; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div id="app"><div class="wrap"><div class="empty">Loading the cooling model…</div></div></div>
+
+<script>/*SIM*/</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"></script>
+<script>
+const { useState, useMemo, useCallback, useEffect, useRef } = React;
+function useWidth() {
+  const ref = useRef(null); const [w, setW] = useState(600);
+  useEffect(() => { if (!ref.current) return; const ro = new ResizeObserver(e => setW(Math.max(260, Math.round(e[0].contentRect.width))));
+    ro.observe(ref.current); return () => ro.disconnect(); }, []);
+  return [ref, w];
+}
+const html = htm.bind(React.createElement);
+const D = UZSim.DEFAULTS;
+const RUN_COLORS = ['var(--hot)', 'var(--cold)', 'var(--accent)', 'var(--violet)', 'var(--oil)', 'var(--muted)'];
+
+const PRESETS = [
+  { name: 'Stock (no restrictor)', o: {} },
+  { name: '14 mm restrictor', o: { bypass: 14 } },
+  { name: '10 mm restrictor', o: { bypass: 10 } },
+  { name: 'Blocked + thermostat', o: { bypass: 0 } },
+  { name: 'Delete kit', o: { bypass: 0, stat: false } },
+  { name: 'Recommended build', o: { bypass: 14, core: 60, duct: 83, ocPct: 20, ocMount: 'side' } },
+];
+
+const ductWord = d => d < 15 ? 'none, air spills around' : d < 40 ? 'loose shroud' : d < 65 ? 'basic shroud' : d < 88 ? 'sealed duct' : 'sealed duct + hood vent';
+function describe(o) {
+  const p = [];
+  p.push(o.bypass <= 0 ? 'bypass blocked' : o.bypass >= 28 ? 'bypass open' : `${o.bypass} mm restrictor`);
+  p.push(o.stat ? `stat ${o.statOpen}°C` : 'no stat');
+  p.push(`${o.core} mm rad`, `duct ${o.duct}%`);
+  if (o.ocPct > 0) p.push(`oil cooler ${o.ocPct}% ${o.ocMount === 'front' ? 'front' : 'own duct'}`);
+  if (o.heater) p.push('heater open');
+  if (o.tAir !== D.tAir) p.push(`${o.tAir}°C air`);
+  if (o.hp !== D.hp) p.push(`${o.hp} hp`);
+  if (o.wot !== D.wot) p.push(`${o.wot}% WOT`);
+  if (o.pulley !== D.pulley) p.push(`pump ×${o.pulley}`);
+  if (o.fc !== D.fc) p.push(`heat ${o.fc}`);
+  return p.join(' · ');
+}
+
+function Slider({ id, label, value, min, max, step = 1, unit = '', fmt, hint, ends, onChange, disabled }) {
+  const shown = fmt ? fmt(value) : `${value}${unit}`;
+  return html`<div class=${'ctl' + (disabled ? ' off' : '')}>
+    <div class="ctl-top"><label for=${id}>${label}</label><span class="val">${shown}</span></div>
+    <input id=${id} type="range" min=${min} max=${max} step=${step} value=${value} disabled=${disabled}
+      onInput=${e => onChange(+e.target.value)} onChange=${e => onChange(+e.target.value)} />
+    ${ends && html`<div class="ends"><span>${ends[0]}</span><span>${ends[1]}</span></div>`}
+    ${hint && html`<div class="hint">${hint}</div>`}
+  </div>`;
+}
+function Toggle({ id, label, checked, onChange, hint }) {
+  return html`<div class="ctl"><div class="toggle"><label for=${id}>${label}</label>
+    <span class="switch"><input id=${id} type="checkbox" checked=${checked} onChange=${e => onChange(e.target.checked)} /><span></span></span></div>
+    ${hint && html`<div class="hint">${hint}</div>`}</div>`;
+}
+function Group({ title, open, children }) {
+  return html`<details class="panel" open=${open}><summary>${title}</summary><div class="controls">${children}</div></details>`;
+}
+
+function niceTicks(lo, hi, n = 5) {
+  const span = hi - lo || 1, raw = span / n, mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw);
+  const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(6));
+  return out;
+}
+function Chart({ title, series, x, yUnit, refs = [], bands = [], yMin, yMax, height = 230, legend = true }) {
+  const [ref, W] = useWidth();
+  const H = W < 480 ? Math.round(height * 0.85) : height, L = 40, R = 10, T = 22, B = 26;
+  const all = series.flatMap(s => s.y);
+  let lo = yMin ?? Math.min(...all), hi = yMax ?? Math.max(...all);
+  refs.forEach(r => { if (r.y > hi && r.y < hi * 1.25) hi = r.y; });
+  if (yMin == null) lo = Math.floor(lo / 10) * 10; if (yMax == null) hi = Math.ceil((hi + 2) / 10) * 10;
+  const xMax = Math.max(...series.map(s => (s.x || x)[(s.x || x).length - 1]));
+  const sx = v => L + (v / xMax) * (W - L - R), sy = v => T + (1 - (Math.min(Math.max(v, lo), hi) - lo) / (hi - lo)) * (H - T - B);
+  const path = (xs, ys) => { let d = ''; const st = Math.max(1, Math.floor(xs.length / 600));
+    for (let i = 0; i < xs.length; i += st) d += (d ? 'L' : 'M') + sx(xs[i]).toFixed(1) + ' ' + sy(ys[i]).toFixed(1); return d; };
+  const yt = niceTicks(lo, hi, 5), xt = niceTicks(0, xMax, 6);
+  return html`<div class="panel chart">
+    <h3>${title}</h3>
+    <div ref=${ref}><svg viewBox=${`0 0 ${W} ${H}`} width=${W} height=${H} role="img" aria-label=${title}>
+      ${bands.map(b => html`<rect x=${L} width=${W - L - R} y=${sy(b.to)} height=${Math.max(0, sy(b.from) - sy(b.to))} fill=${b.color} opacity="0.12" />`)}
+      ${yt.map(v => html`<g><line x1=${L} x2=${W - R} y1=${sy(v)} y2=${sy(v)} stroke="var(--line)" stroke-width="1" />
+        <text x=${L - 6} y=${sy(v) + 4} text-anchor="end" font-size="11" font-family="var(--f-mono)" fill="var(--muted)">${v}</text></g>`)}
+      ${xt.filter(v => sx(v) < W - R - 30).map(v => html`<text x=${sx(v)} y=${H - 10} text-anchor="middle" font-size="11" font-family="var(--f-mono)" fill="var(--muted)">${v}</text>`)}
+      <text x=${W - R} y=${H - 10} text-anchor="end" font-size="11" font-family="var(--f-mono)" fill="var(--muted)">min</text>
+      <text x=${4} y=${11} text-anchor="start" font-size="11" font-family="var(--f-mono)" fill="var(--muted)">${yUnit}</text>
+      ${refs.filter(r => r.y >= lo && r.y <= hi).map(r => html`<g><line x1=${L} x2=${W - R} y1=${sy(r.y)} y2=${sy(r.y)} stroke=${r.color} stroke-dasharray="4 4" stroke-width="1.2" />
+        <text x=${W - R - 4} y=${sy(r.y) - 5} text-anchor="end" font-size="11" font-family="var(--f-body)" fill=${r.color}>${r.label}</text></g>`)}
+      ${series.map(s => html`<path d=${path(s.x || x, s.y)} fill="none" stroke=${s.color} stroke-width=${s.w || 1.6} stroke-dasharray=${s.dash || 'none'} stroke-linejoin="round" opacity=${s.op || 1} />`)}
+    </svg></div>
+    ${legend && html`<div class="legend">${series.filter(s => s.label).map(s => html`<span><i style=${{ background: s.color, opacity: s.op || 1 }}></i>${s.label}</span>`)}</div>`}
+  </div>`;
+}
+const lapAvg = (a, n = 100) => { const out = new Array(a.length); let acc = 0; const q = [];
+  for (let i = 0; i < a.length; i++) { acc += a[i]; q.push(a[i]); if (q.length > n) acc -= q.shift(); out[i] = acc / q.length; } return out; };
+
+function App() {
+  const [o, setO] = useState({ ...D });
+  const [cur, setCur] = useState(null);
+  const [band, setBand] = useState(null);
+  const [pinned, setPinned] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const set = k => v => { setO(p => ({ ...p, [k]: v })); setDirty(true); };
+
+  const simulate = useCallback((opts, scroll) => {
+    setBusy(true);
+    setTimeout(() => {
+      const r = UZSim.run(opts);
+      const lo = UZSim.run({ ...opts, fc: Math.max(0.3, opts.fc - 0.1) }).sum.ectEnd;
+      const hi = UZSim.run({ ...opts, fc: opts.fc + 0.1 }).sum.ectEnd;
+      setCur({ ...r, label: describe(r.opts) }); setBand([lo, hi]); setBusy(false); setDirty(false);
+      if (scroll && window.innerWidth < 860) { const m = document.getElementById('results'); if (m) m.scrollIntoView({ block: 'start' }); }
+    }, 20);
+  }, []);
+  useEffect(() => { simulate(D); }, []);
+  const pin = () => { if (!cur) return; setPinned(p => [...p.filter(x => x.label !== cur.label), cur].slice(-5)); };
+  const applyPreset = po => { const n = { ...o, bypass: 28, stat: true, ...po }; setO(n); simulate(n, true); };
+
+  const s = cur && cur.sum;
+  const state = !s ? null : (s.tBoil != null || s.ectEnd >= s.T_boil) ? 'crit' : s.ectEnd > 112 || s.oilEnd > 135 ? 'warn' : 'good';
+  const verdict = !s ? '' : state === 'crit'
+    ? `Boils ${s.tBoil != null ? `after ${s.tBoil.toFixed(1)} min` : ''}: coolant passes ${s.T_boil.toFixed(0)}°C, the boiling point at this cap and glycol mix.`
+    : state === 'warn' ? `Survives, but hot: ${s.ectEnd.toFixed(0)}°C coolant, ${s.oilEnd.toFixed(0)}°C oil. Little margin on a hotter day.`
+    : `Holds temperature: ${s.ectEnd.toFixed(0)}°C coolant and ${s.oilEnd.toFixed(0)}°C oil at the end of the session.`;
+  const rows = Math.round((o.ocPct / 100) * 0.56 * 0.34 / (0.33 * 0.0072));
+
+  return html`<div class="wrap">
+    <header>
+      <h1>3UZ Miata Cooling Lab<small>1D loop model · 3UZ-FE NA · IL Motorsport frame radiator · inlet-side thermostat</small></h1>
+    </header>
+    <div class="grid">
+      <aside class="rail">
+        <details class="panel" open><summary>Presets</summary>
+          <div class="presets">${PRESETS.map(p => html`<button class="chipbtn" onClick=${() => applyPreset(p.o)}>${p.name}</button>`)}</div>
+        </details>
+        <${Group} title="Coolant loop" open=${true}>
+          <${Slider} id="bypass" label="Bypass restrictor bore" value=${o.bypass} min=${0} max=${28} unit=" mm"
+            fmt=${v => v <= 0 ? 'blocked' : v >= 28 ? '28 mm open' : v + ' mm'} ends=${['blocked', 'stock 28 mm']} onChange=${set('bypass')}
+            hint="Stock UZ bypass is 28 mm and has lower resistance than the radiator path." />
+          <${Toggle} id="stat" label="Thermostat fitted" checked=${o.stat} onChange=${set('stat')} />
+          <${Slider} id="statOpen" label="Thermostat opening temp" value=${o.statOpen} min=${60} max=${95} unit="°C" disabled=${!o.stat}
+            fmt=${v => `${v}–${v + 8}°C`} hint="Starts opening at this temp, fully open 8°C higher. Stock: 82–90." onChange=${set('statOpen')} />
+          <${Toggle} id="heater" label="Heater valve open" checked=${o.heater} onChange=${set('heater')} hint="Heater core flow is a second path that skips the radiator." />
+          <${Slider} id="pulley" label="Water pump speed" value=${o.pulley} min=${0.7} max=${1.3} step=${0.05} fmt=${v => '×' + v.toFixed(2)}
+            ends=${['underdrive', 'overdrive']} onChange=${set('pulley')} />
+        <//>
+        <${Group} title="Radiator and air" open=${true}>
+          <${Slider} id="duct" label="Radiator ducting" value=${o.duct} min=${0} max=${100} unit="%"
+            fmt=${v => `${v}%`} hint=${`${ductWord(o.duct)} · radiator face air = ${(10 + 0.3 * o.duct).toFixed(0)}% of car speed`} ends=${['none', 'perfect']} onChange=${set('duct')} />
+          <${Slider} id="core" label="Radiator core thickness" value=${o.core} min=${16} max=${70} unit=" mm"
+            hint="16 mm ≈ stock NA single row · 42 mm = IL Motorsport NA0-5051 · same 560×340 mm face" onChange=${set('core')} />
+          <${Slider} id="tAir" label="Air temperature" value=${o.tAir} min=${0} max=${45} unit="°C" onChange=${set('tAir')} />
+        <//>
+        <${Group} title="Oil cooler" open=${true}>
+          <${Slider} id="ocPct" label="Size (share of radiator face)" value=${o.ocPct} min=${0} max=${50} unit="%"
+            hint=${o.ocPct > 0 ? `≈ ${rows}-row stacked plate (330 mm wide, 7.2 mm row pitch)` : 'No oil cooler: all oil heat goes into the coolant through the block.'} onChange=${set('ocPct')} />
+          <${Slider} id="ocThick" label="Core thickness" value=${o.ocThick} min=${20} max=${80} unit=" mm" disabled=${o.ocPct === 0} onChange=${set('ocThick')} />
+          <div class=${'ctl' + (o.ocPct === 0 ? ' off' : '')}><label>Mounting</label>
+            <div class="seg" role="group" aria-label="Oil cooler mounting">
+              <button aria-pressed=${o.ocMount === 'front'} onClick=${() => set('ocMount')('front')}>In front of radiator</button>
+              <button aria-pressed=${o.ocMount === 'side'} onClick=${() => set('ocMount')('side')}>Own duct</button>
+            </div>
+            <div class="hint">In front, its hot exhaust air feeds that strip of the radiator.</div></div>
+        <//>
+        <${Group} title="Engine and track" open=${false}>
+          <${Slider} id="hp" label="Engine power" value=${o.hp} min=${200} max=${450} step=${10} unit=" hp" hint="3UZ-FE stock: 290 hp" onChange=${set('hp')} />
+          <${Slider} id="wot" label="Full throttle share of lap" value=${o.wot} min=${30} max=${85} unit="%" onChange=${set('wot')} />
+          <${Slider} id="speed" label="Track speed" value=${o.speed} min=${0.7} max=${1.3} step=${0.05} fmt=${v => '×' + v.toFixed(2)} ends=${['tight', 'fast']} onChange=${set('speed')} />
+          <${Slider} id="minutes" label="Session length" value=${o.minutes} min=${5} max=${40} unit=" min" onChange=${set('minutes')} />
+          <${Slider} id="tStart" label="Start coolant temp" value=${o.tStart} min=${20} max=${95} unit="°C" onChange=${set('tStart')} />
+          <${Slider} id="glycol" label="Glycol in coolant" value=${o.glycol} min=${0} max=${70} step=${5} unit="%" onChange=${set('glycol')} />
+          <${Slider} id="cap" label="Radiator cap" value=${o.cap} min=${0.8} max=${1.6} step=${0.1} fmt=${v => v.toFixed(1) + ' bar'} onChange=${set('cap')} />
+        <//>
+        <${Group} title="Model calibration" open=${false}>
+          <${Slider} id="fc" label="Engine heat into coolant + oil" value=${o.fc} min=${0.5} max=${0.9} step=${0.05} fmt=${v => `${v.toFixed(2)} × power`}
+            hint="Fitted to forum track data from turbo and supercharged Miatas: 0.70. Absolute temps ±20°C, comparisons are solid." onChange=${set('fc')} />
+          <${Slider} id="fOil" label="Share of that heat into oil" value=${o.fOil} min=${0.1} max=${0.35} step=${0.01} fmt=${v => Math.round(v * 100) + '%'} onChange=${set('fOil')} />
+        <//>
+        <div class="actions">
+          <button class="btn primary" disabled=${busy} onClick=${() => simulate(o, true)}>${busy ? 'Running…' : dirty ? 'Plot' : 'Plot again'}</button>
+          <button class="btn ghost" disabled=${!cur || busy} onClick=${pin}>Keep to compare</button>
+        </div>
+      </aside>
+
+      <main class="main" id="results">
+        ${!s ? html`<div class="panel empty">Running the first session…</div>` : html`
+        <div class="verdict"><span class=${'pill ' + state}>${state === 'crit' ? 'Boils' : state === 'warn' ? 'Marginal' : 'OK'}</span>
+          <p><b>${cur.label}</b><br/>${verdict}${dirty ? ' Settings changed: press Plot to update.' : ''}</p></div>
+        <div class="stats">
+          <div class="stat"><span class="k">Coolant, last 5 min</span><span class="v">${s.ectEnd.toFixed(0)}<small> °C</small></span>
+            <span class="s">${band ? `range ${band[0].toFixed(0)}–${band[1].toFixed(0)}°C` : ''}</span></div>
+          <div class="stat"><span class="k">Oil, last 5 min</span><span class="v">${s.oilEnd.toFixed(0)}<small> °C</small></span><span class="s">${s.qOc > 0.05 ? `cooler ${s.qOc.toFixed(1)} kW` : 'no oil cooler'}</span></div>
+          <div class="stat"><span class="k">Boils after</span><span class="v">${s.tBoil != null ? s.tBoil.toFixed(1) : '—'}<small>${s.tBoil != null ? ' min' : ''}</small></span><span class="s">boiling point ${s.T_boil.toFixed(0)}°C</span></div>
+          <div class="stat"><span class="k">Through radiator</span><span class="v">${s.Qr.toFixed(0)}<small> L/min</small></span>
+            <span class="s">${(100 * (s.Qb + s.Qh) / (s.Qr + s.Qb + s.Qh)).toFixed(0)}% skips it</span></div>
+          <div class="stat"><span class="k">Heat in / radiator out</span><span class="v">${s.qIn.toFixed(0)}<small> / ${s.qRad.toFixed(0)} kW</small></span><span class="s">avg ${s.vAvg.toFixed(0)} km/h</span></div>
+        </div>
+        <div class="charts">
+          <div class="wide"><${Chart} title="Coolant at sensor (ECT)" x=${cur.log.t} yUnit="°C" yMin=${Math.min(60, Math.floor(o.tStart / 10) * 10)} yMax=${Math.max(140, Math.ceil(Math.min(170, Math.max(...cur.log.ect, ...pinned.flatMap(p => p.log.ect))) / 10) * 10)}
+            refs=${[{ y: s.T_boil, label: `boils ${s.T_boil.toFixed(0)}°C`, color: 'var(--hot)' }]}
+            bands=${o.stat ? [{ from: o.statOpen, to: o.statOpen + 8, color: 'var(--accent)' }] : []}
+            series=${[...pinned.filter(p => p.label !== cur.label).map((p, i) => ({ x: p.log.t, y: p.log.ect, color: RUN_COLORS[(i + 1) % RUN_COLORS.length], w: 1.4, op: .8, label: p.label })),
+              { y: cur.log.ect, color: 'var(--ink)', w: 2.4, label: 'current: ' + cur.label }]} />
+          ${pinned.length > 0 && html`<div class="runs" style=${{ marginTop: '8px' }}>${pinned.map((p, i) => html`<span class="run">
+            <span class="dot" style=${{ background: p.label === cur.label ? 'var(--ink)' : RUN_COLORS[(pinned.filter(q => q.label !== cur.label).indexOf(p) + 1) % RUN_COLORS.length] }}></span>
+            <span class="lbl">${p.label}</span><b>${p.sum.ectEnd.toFixed(0)}°C</b>
+            <button aria-label="Remove run" onClick=${() => setPinned(ps => ps.filter(q => q !== p))}>×</button></span>`)}</div>`}
+          </div>
+          <${Chart} title="Temperatures, current run" x=${cur.log.t} yUnit="°C" yMin=${Math.min(20, o.tAir)} yMax=${Math.min(200, Math.ceil(Math.max(...cur.log.oil, ...cur.log.metal, 140) / 10) * 10)}
+            refs=${[{ y: s.T_boil, label: 'boil', color: 'var(--hot)' }]}
+            series=${[{ y: cur.log.ect, color: 'var(--hot)', w: 2, label: 'ECT' }, { y: cur.log.radIn, color: 'var(--warn)', label: 'radiator in' },
+              { y: cur.log.radOut, color: 'var(--cold)', label: 'radiator out' }, { y: cur.log.oil, color: 'var(--oil)', dash: '6 3', w: 1.8, label: 'oil' },
+              { y: cur.log.metal, color: 'var(--muted)', dash: '2 3', label: 'head hot side (proxy)' }]} />
+          <${Chart} title="Coolant flow, current run" x=${cur.log.t} yUnit="L/min" yMin=${0}
+            series=${[{ y: cur.log.Qr, color: 'var(--cold)', label: 'through radiator' }, { y: cur.log.Qb, color: 'var(--warn)', label: 'through bypass' },
+              ...(o.heater ? [{ y: cur.log.Qh, color: 'var(--violet)', label: 'through heater' }] : []),
+              ...(o.stat ? [{ y: cur.log.lift, color: 'var(--accent)', dash: '5 3', label: 'thermostat lift %' }] : [])]} />
+          <div class="wide"><${Chart} title="Heat balance, one-lap average" x=${cur.log.t} yUnit="kW" yMin=${0} height=${190}
+            series=${[{ y: lapAvg(cur.log.qIn), color: 'var(--hot)', w: 2, label: 'engine heat in' }, { y: lapAvg(cur.log.qRad), color: 'var(--cold)', w: 2, label: 'radiator out' },
+              ...(s.qOc > 0.05 ? [{ y: lapAvg(cur.log.qOc), color: 'var(--oil)', w: 2, label: 'oil cooler out' }] : [])]} /></div>
+        </div>
+        <div class="panel notes">
+          <p><b>How to read this.</b> Each Plot runs a 20 min track session: a 100 s lap with six straights, starting with the thermostat closed. Plot also runs the session again with engine heat ±0.1, which gives the range under the coolant number. Absolute temperatures are a calibrated estimate (±20°C, no 3UZ logs yet). Differences between setups are the reliable output.</p>
+          <p>Model: pump curve, block, radiator, 38→32 mm necks, bypass and restrictor solved as a flow network every 20 ms. Wax thermostat with a 15 s lag on the pump-inlet side. Radiator cells with air as the limiting side. Separate oil and metal nodes. Readings above the boiling point are not physical: the coolant would boil over first.</p>
+        </div>`}
+      </main>
+    </div>
+  </div>`;
+}
+ReactDOM.createRoot(document.getElementById('app')).render(html`<${App} />`);
+</script>
