@@ -158,6 +158,10 @@ const PRESETS = [
   { name: '10 mm restrictor', o: { bypass: 10 } },
   { name: 'Blocked + thermostat', o: { bypass: 0 } },
   { name: 'Delete kit', o: { bypass: 0, stat: false } },
+  { name: 'Worn thermostat (60% lift)', o: { statLift: 60 } },
+  { name: 'Worn thermostat + 14 mm', o: { statLift: 60, bypass: 14 } },
+  { name: 'Thermostat without disc', o: { statDisc: false } },
+  { name: 'No disc + 14 mm', o: { statDisc: false, bypass: 14 } },
   { name: 'Recommended build', o: { bypass: 14, core: 60, duct: 83, ocPct: 16.4, ocThick: 50, ocModel: '19-330', ocMount: 'side' } },
 ];
 
@@ -165,7 +169,7 @@ const ductWord = d => d < 15 ? 'none, air spills around' : d < 40 ? 'loose shrou
 function describe(o) {
   const p = [];
   p.push(o.bypass <= 0 ? 'bypass blocked' : o.bypass >= 28 ? 'bypass open' : `${o.bypass} mm restrictor`);
-  p.push(o.stat ? `stat ${o.statOpen}°C` : 'no stat');
+  p.push(o.stat ? `stat ${o.statOpen}°C${o.statDisc ? '' : ' no disc'}${o.statLift < 100 ? ` worn ${o.statLift}%` : ''}` : 'no stat');
   p.push(`${o.core} mm rad`, `duct ${o.duct}%`);
   if (o.ocPct > 0) { const m = OC_MODELS.find(x => x.id === o.ocModel); p.push(`oil cooler ${m && m.w ? m.short : o.ocPct + '%'} ${o.ocMount === 'front' ? 'front' : 'own duct'}`); }
   if (!o.heater) p.push('heater deleted');
@@ -248,7 +252,8 @@ function Hydraulics({ h, o }) {
     ['Hoses + 32 mm necks', h.hose, 'var(--cold)', 'radiator path'],
     [o.stat ? `Thermostat (${h.lift.toFixed(0)}% open)` : 'Thermostat (removed)', h.stat, 'var(--accent)', 'radiator path'],
     ...(o.bypass > 0 ? [['Bypass passage 28 mm', h.bp, 'var(--warn)', 'bypass path'],
-      ...(o.bypass < 28 ? [[`Restrictor ${o.bypass} mm`, h.restr, 'var(--warn)', 'bypass path']] : [])] : []),
+      ...(o.bypass < 28 ? [[`Restrictor ${o.bypass} mm`, h.restr, 'var(--warn)', 'bypass path']] : []),
+      ...(o.stat && o.statDisc ? [['Bypass disc (thermostat back)', h.disc, 'var(--warn)', 'bypass path · closes as the thermostat opens']] : [])] : []),
     ...(o.heater ? [['Heater loop', h.heater, 'var(--violet)', 'heater path']] : []),
   ];
   const mx = Math.max(...rows.map(r => r[1]), 1), so = h.statOpen;
@@ -259,11 +264,12 @@ function Hydraulics({ h, o }) {
       <span class="hl">${l}<small>${n}</small></span>
       <span class="hb"><i style=${{ width: (100 * v / mx).toFixed(1) + '%', background: c }}></i></span>
       <span class="hv">${v.toFixed(1)} kPa</span></div>`)}</div>
-    <p class="hyd-note">Parallel paths share one pressure drop: radiator path ${radPath.toFixed(1)} kPa${o.bypass > 0 ? `, bypass ${(h.bp + h.restr).toFixed(1)}` : ''}${o.heater ? `, heater ${h.heater.toFixed(1)}` : ''}.
+    <p class="hyd-note">Parallel paths share one pressure drop: radiator path ${radPath.toFixed(1)} kPa${o.bypass > 0 ? `, bypass ${(h.bp + h.restr + h.disc).toFixed(1)}` : ''}${o.heater ? `, heater ${h.heater.toFixed(1)}` : ''}.
       Pump ${h.Q.toFixed(0)} L/min at ~${h.rpm.toFixed(0)} rpm average.</p>
-    <p class="hyd-call"><b>A new, fully open thermostat</b> (34 mm valve, 10 mm lift) is ${(100 * so.share).toFixed(0)}% of the radiator path's resistance:
-      ${so.dp.toFixed(1)} kPa here. Without it the radiator would get ${so.QrWithout.toFixed(0)} instead of ${so.QrWith.toFixed(0)} L/min (+${gain.toFixed(0)}%).
-      Toggle "Thermostat fitted" off to see what that does to temperature.</p>
+    <p class="hyd-call"><b>A new, fully open thermostat</b>${` (34 mm valve, 10 mm lift) is ${(100 * so.share).toFixed(0)}% of the radiator path's resistance. ` +
+      (o.statDisc && o.bypass > 0 ? 'But its back disc also shuts the bypass, so removing it' : 'Removing it') +
+      ` (bypass ${o.bypass > 0 ? 'left open' : 'blocked'}) would give the radiator ${so.QrWithout.toFixed(0)} instead of ${so.QrWith.toFixed(0)} L/min (${gain >= 0 ? '+' : ''}${gain.toFixed(0)}%).` +
+      (o.stat ? ` Average bypass flow now: ${h.Qb.toFixed(0)} L/min at ${h.lift.toFixed(0)}% lift.` : '')}</p>
   </div>`;
 }
 
@@ -365,6 +371,11 @@ function App() {
           <${Toggle} id="stat" label="Thermostat fitted" checked=${o.stat} onChange=${set('stat')} />
           <${Slider} id="statOpen" label="Thermostat opening temp" value=${o.statOpen} min=${60} max=${95} unit="°C" disabled=${!o.stat}
             fmt=${v => `${v}–${v + 8}°C`} hint="Starts opening at this temp, fully open 8°C higher. Stock: 82–90." onChange=${set('statOpen')} />
+          <${Toggle} id="statDisc" label="Thermostat has bypass disc" checked=${o.statDisc} onChange=${set('statDisc')}
+            hint="The Toyota UZ thermostat has a disc on its back that closes the bypass as the main valve opens. Many aftermarket or racing thermostats don't." />
+          <${Slider} id="statLift" label="Thermostat condition" value=${o.statLift} min=${40} max=${100} step=${5} disabled=${!o.stat}
+            fmt=${v => v >= 100 ? 'new · 10 mm lift' : `worn · ${(v / 10).toFixed(1)} mm lift`} ends=${['worn out', 'new']}
+            hint="Old wax or a tired spring stops short of full lift: the main valve stays smaller and the bypass disc never seats." onChange=${set('statLift')} />
           <${Toggle} id="heaterDel" label="Heater deleted" checked=${!o.heater} onChange=${v => set('heater')(!v)}
             hint="A Miata has no heater valve, so unless the heater is deleted its core always flows: a small second bypass around the radiator." />
           <${Slider} id="pulley" label="Water pump speed" value=${o.pulley} min=${0.7} max=${1.3} step=${0.05} fmt=${v => '×' + v.toFixed(2)}

@@ -12,6 +12,7 @@ cells for hoses/radiator/bypass. Radiator: air is Cmin (per-cell eps = 1-exp(-NT
 
 Usage: uz-cooling-1d.py CASE [--fc 0.55] [--duct 0.22] [--out dir]
   CASE: stock | r18 | r14 | r10 | blocked | blockedNH (blocked + heater deleted) | delete   (rNN = restrictor bore mm)
+        add '+wornNN' (thermostat reaches NN% lift) or '+nodisc' (no bypass disc), e.g. r14+worn60, stock+nodisc
 """
 import argparse, json, math, os
 import numpy as np
@@ -102,17 +103,38 @@ def eps_xflow(NTU, Cr):
 
 def run(case, fc=0.75, duct=0.25, t_end=1200.0, dt=0.02, overrides=None, oc='none', heater=True):
     p = dict(P, **(overrides or {}))
-    has_stat = case != 'delete'
-    if case in ('stock',):
+    # case = tokens joined by '+': stock | rNN (restrictor bore) | blocked | blockedNH (blocked + heater deleted) | delete
+    #                               | wornNN (thermostat reaches NN % of its 10 mm lift) | nodisc (thermostat without bypass disc)
+    toks = case.split('+')
+    base = toks[0]
+    has_stat = base != 'delete'
+    x_max = 1.0
+    disc = True
+    for t in toks[1:]:
+        if t.startswith('worn'):
+            x_max = float(t[4:]) / 100
+        elif t == 'nodisc':
+            disc = False
+        elif t.startswith('r'):
+            base = base if base != 'stock' else t
+        else:
+            raise SystemExit(f'unknown case token {t}')
+    if base == 'nodisc':
+        disc, base = False, 'stock'
+    if base.startswith('worn'):
+        x_max, base = float(base[4:]) / 100, 'stock'
+    if base == 'stock':
         k_bp = p['k_bypass']
-    elif case.startswith('r'):
-        k_bp = p['k_bypass'] + k_restrictor(float(case[1:]))
-    elif case in ('blocked', 'delete', 'blockedNH'):
+    elif base.startswith('r'):
+        k_bp = p['k_bypass'] + k_restrictor(float(base[1:]))
+    elif base in ('blocked', 'delete', 'blockedNH'):
         k_bp = None
-        if case == 'blockedNH':
+        if base == 'blockedNH':
             heater = False
     else:
         raise SystemExit(f'unknown case {case}')
+    # bypass disc on the back of the thermostat: curtain pi*28mm*gap, gap = 10mm*(1-lift) + 0.3mm leak when seated
+    k_disc = (lambda xx: k_orifice(0.6 * math.pi * 0.028 * (0.010 * (1 - xx) + 0.0003))) if (has_stat and disc) else (lambda xx: 0.0)
 
     th, vs, rs = lap_profile(dt)
     nlap = len(th)
@@ -131,14 +153,14 @@ def run(case, fc=0.75, duct=0.25, t_end=1200.0, dt=0.02, overrides=None, oc='non
         s = rpm / 6000.0
         # thermostat lift
         if has_stat:
-            x = min(1.0, max(0.0, (T_sense - p['stat_open']) / (p['stat_full'] - p['stat_open'])))
+            x = min(x_max, max(0.0, (T_sense - p['stat_open']) / (p['stat_full'] - p['stat_open'])))
             cdA = p['stat_cdA_jiggle'] + x * p['stat_cdA_full']
             k_r = k_rad_fixed + k_orifice(cdA)
         else:
             x = 1.0
             k_r = k_rad_fixed
         sr = 1 / math.sqrt(k_r)
-        sb = 0.0 if k_bp is None else 1 / math.sqrt(k_bp)
+        sb = 0.0 if k_bp is None else 1 / math.sqrt(k_bp + k_disc(x))
         sh = 1 / math.sqrt(p['k_heater']) if heater else 0.0
         ssum = sr + sb + sh
         k_par = 1 / ssum ** 2

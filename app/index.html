@@ -163,6 +163,8 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
     bypass: 28,          // restrictor bore mm; 28 = open (stock), 0 = blocked
     heater: true,        // heater loop flows (Miata has no heater valve); false = heater deleted
     stat: true, statOpen: 82,
+    statDisc: true,      // Toyota UZ thermostat: a disc on its back closes the bypass as the main valve opens
+    statLift: 100,       // thermostat condition: % of the 10 mm design lift it still reaches (worn wax / weak spring < 100)
     pulley: 1.0,         // pump speed / crank speed
     glycol: 50, cap: 1.1,
     ww: false,           // Water Wetter (surfactant): ~+8% coolant-side heat transfer
@@ -240,28 +242,32 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
     const log = { t: [], ect: [], oil: [], metal: [], radIn: [], radOut: [], mix: [], lift: [],
       Qr: [], Qb: [], Qh: [], qIn: [], qRad: [], qOc: [], v: [], tPre: [] };
     let qRad = 0, qOc = 0, Tpre = o.tAir;
-    const net = (s, kR) => {   // flow network at pump speed s (=rpm/6000) for radiator-path k
-      const sr = 1 / Math.sqrt(kR), sb = kBp ? 1 / Math.sqrt(kBp) : 0, sh = kH ? 1 / Math.sqrt(kH) : 0;
+    // bypass disc: curtain pi*28mm*gap, gap = 10 mm*(1 - lift) + 0.3 mm leak when seated
+    const kDisc = x => (o.stat && o.statDisc) ? kOrif(0.6 * Math.PI * 0.028 * (0.010 * (1 - x) + 0.0003)) : 0;
+    const net = (s, kR, kB = kBp) => {   // flow network at pump speed s (=rpm/6000); kR radiator path, kB bypass path
+      const sr = 1 / Math.sqrt(kR), sb = kB ? 1 / Math.sqrt(kB) : 0, sh = kH ? 1 / Math.sqrt(kH) : 0;
       const sum = sr + sb + sh, Q = s * Math.sqrt(P.p0 / (P.c_pump + P.k_eng + 1 / sum ** 2));
       return { Q, Qr: Q * sr / sum, Qb: Q * sb / sum, Qh: Q * sh / sum };
     };
     const kStatFull = kOrif(P.cdA_jig + P.cdA_full), kRestr = o.bypass > 0 ? kRestrictor(o.bypass) : 0;
     const iWin = Math.max(0, steps - Math.round(Math.min(300, o.minutes * 15) / dt));
-    const H = { n: 0, s: 0, pump: 0, eng: 0, core: 0, hose: 0, stat: 0, bp: 0, restr: 0, heater: 0, Q: 0, Qr: 0, lift: 0 };
+    const H = { n: 0, s: 0, pump: 0, eng: 0, core: 0, hose: 0, stat: 0, bp: 0, restr: 0, disc: 0, heater: 0, Q: 0, Qr: 0, Qb: 0, lift: 0 };
+    const xMax = o.statLift / 100;
     for (let i = 0; i < steps; i++) {
       const j = i % nlap, thr = th[j], v = vs[j], rpm = rs[j];
       const s = rpm * o.pulley / 6000;
       let x = 1, kR = P.k_rad_fixed;
       if (o.stat) {
-        x = Math.min(1, Math.max(0, (Tsense - o.statOpen) / (statFull - o.statOpen)));
+        x = Math.min(xMax, Math.max(0, (Tsense - o.statOpen) / (statFull - o.statOpen)));
         kR += kOrif(P.cdA_jig + x * P.cdA_full);
       }
-      const { Q, Qr, Qb, Qh } = net(s, kR);
+      const kd = kDisc(x), kB = kBp ? kBp + kd : null;
+      const { Q, Qr, Qb, Qh } = net(s, kR, kB);
       if (i >= iWin) {   // pressure-drop bookkeeping over the last 5 min (kPa)
-        H.n++; H.s += s; H.Q += Q; H.Qr += Qr; H.lift += x;
+        H.n++; H.s += s; H.Q += Q; H.Qr += Qr; H.Qb += Qb; H.lift += x;
         H.pump += P.p0 * s * s - P.c_pump * Q * Q; H.eng += P.k_eng * Q * Q;
         H.core += 2.4 * Qr * Qr; H.hose += (P.k_rad_fixed - 2.4) * Qr * Qr; H.stat += (kR - P.k_rad_fixed) * Qr * Qr;
-        H.bp += P.k_bypass * Qb * Qb; H.restr += kRestr * Qb * Qb; H.heater += kH ? kH * Qh * Qh : 0;
+        H.bp += P.k_bypass * Qb * Qb; H.restr += kRestr * Qb * Qb; H.disc += kd * Qb * Qb; H.heater += kH ? kH * Qh * Qh : 0;
       }
       const mr = Qr * RHO / 1000, mb = Qb * RHO / 1000, mh = Qh * RHO / 1000, m = Q * RHO / 1000;
 
@@ -334,9 +340,11 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
     };
     // hydraulics summary, last 5 min averages; plus what a fully open thermostat costs at the same pump speed
     const m_ = k => H[k] / H.n, sBar = m_('s');
-    const withStat = net(sBar, P.k_rad_fixed + kStatFull), noStat = net(sBar, P.k_rad_fixed);
+    const xBar = m_('lift');
+    const withStat = net(sBar, P.k_rad_fixed + kOrif(P.cdA_jig + xMax * P.cdA_full), kBp ? kBp + kDisc(xMax) : null),
+      noStat = net(sBar, P.k_rad_fixed, kBp);
     sum.hyd = { pump: m_('pump'), eng: m_('eng'), core: m_('core'), hose: m_('hose'), stat: m_('stat'), bp: m_('bp'),
-      restr: m_('restr'), heater: m_('heater'), Q: m_('Q') * 60, Qr: m_('Qr') * 60, lift: m_('lift') * 100, rpm: sBar * 6000 / o.pulley,
+      restr: m_('restr'), disc: m_('disc'), Qb: m_('Qb') * 60, heater: m_('heater'), Q: m_('Q') * 60, Qr: m_('Qr') * 60, lift: m_('lift') * 100, rpm: sBar * 6000 / o.pulley,
       statOpen: { k: kStatFull, kRadPath: P.k_rad_fixed + kStatFull, share: kStatFull / (P.k_rad_fixed + kStatFull),
         dp: kStatFull * withStat.Qr ** 2, QrWith: withStat.Qr * 60, QrWithout: noStat.Qr * 60 } };
     return { opts: o, log, sum };
@@ -376,6 +384,8 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
     bypass: 28,          // restrictor bore mm; 28 = open (stock), 0 = blocked
     heater: true,        // heater loop flows (Miata has no heater valve); false = heater deleted
     stat: true, statOpen: 82,
+    statDisc: true,      // Toyota UZ thermostat: a disc on its back closes the bypass as the main valve opens
+    statLift: 100,       // thermostat condition: % of the 10 mm design lift it still reaches (worn wax / weak spring < 100)
     pulley: 1.0,         // pump speed / crank speed
     glycol: 50, cap: 1.1,
     ww: false,           // Water Wetter (surfactant): ~+8% coolant-side heat transfer
@@ -453,28 +463,32 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
     const log = { t: [], ect: [], oil: [], metal: [], radIn: [], radOut: [], mix: [], lift: [],
       Qr: [], Qb: [], Qh: [], qIn: [], qRad: [], qOc: [], v: [], tPre: [] };
     let qRad = 0, qOc = 0, Tpre = o.tAir;
-    const net = (s, kR) => {   // flow network at pump speed s (=rpm/6000) for radiator-path k
-      const sr = 1 / Math.sqrt(kR), sb = kBp ? 1 / Math.sqrt(kBp) : 0, sh = kH ? 1 / Math.sqrt(kH) : 0;
+    // bypass disc: curtain pi*28mm*gap, gap = 10 mm*(1 - lift) + 0.3 mm leak when seated
+    const kDisc = x => (o.stat && o.statDisc) ? kOrif(0.6 * Math.PI * 0.028 * (0.010 * (1 - x) + 0.0003)) : 0;
+    const net = (s, kR, kB = kBp) => {   // flow network at pump speed s (=rpm/6000); kR radiator path, kB bypass path
+      const sr = 1 / Math.sqrt(kR), sb = kB ? 1 / Math.sqrt(kB) : 0, sh = kH ? 1 / Math.sqrt(kH) : 0;
       const sum = sr + sb + sh, Q = s * Math.sqrt(P.p0 / (P.c_pump + P.k_eng + 1 / sum ** 2));
       return { Q, Qr: Q * sr / sum, Qb: Q * sb / sum, Qh: Q * sh / sum };
     };
     const kStatFull = kOrif(P.cdA_jig + P.cdA_full), kRestr = o.bypass > 0 ? kRestrictor(o.bypass) : 0;
     const iWin = Math.max(0, steps - Math.round(Math.min(300, o.minutes * 15) / dt));
-    const H = { n: 0, s: 0, pump: 0, eng: 0, core: 0, hose: 0, stat: 0, bp: 0, restr: 0, heater: 0, Q: 0, Qr: 0, lift: 0 };
+    const H = { n: 0, s: 0, pump: 0, eng: 0, core: 0, hose: 0, stat: 0, bp: 0, restr: 0, disc: 0, heater: 0, Q: 0, Qr: 0, Qb: 0, lift: 0 };
+    const xMax = o.statLift / 100;
     for (let i = 0; i < steps; i++) {
       const j = i % nlap, thr = th[j], v = vs[j], rpm = rs[j];
       const s = rpm * o.pulley / 6000;
       let x = 1, kR = P.k_rad_fixed;
       if (o.stat) {
-        x = Math.min(1, Math.max(0, (Tsense - o.statOpen) / (statFull - o.statOpen)));
+        x = Math.min(xMax, Math.max(0, (Tsense - o.statOpen) / (statFull - o.statOpen)));
         kR += kOrif(P.cdA_jig + x * P.cdA_full);
       }
-      const { Q, Qr, Qb, Qh } = net(s, kR);
+      const kd = kDisc(x), kB = kBp ? kBp + kd : null;
+      const { Q, Qr, Qb, Qh } = net(s, kR, kB);
       if (i >= iWin) {   // pressure-drop bookkeeping over the last 5 min (kPa)
-        H.n++; H.s += s; H.Q += Q; H.Qr += Qr; H.lift += x;
+        H.n++; H.s += s; H.Q += Q; H.Qr += Qr; H.Qb += Qb; H.lift += x;
         H.pump += P.p0 * s * s - P.c_pump * Q * Q; H.eng += P.k_eng * Q * Q;
         H.core += 2.4 * Qr * Qr; H.hose += (P.k_rad_fixed - 2.4) * Qr * Qr; H.stat += (kR - P.k_rad_fixed) * Qr * Qr;
-        H.bp += P.k_bypass * Qb * Qb; H.restr += kRestr * Qb * Qb; H.heater += kH ? kH * Qh * Qh : 0;
+        H.bp += P.k_bypass * Qb * Qb; H.restr += kRestr * Qb * Qb; H.disc += kd * Qb * Qb; H.heater += kH ? kH * Qh * Qh : 0;
       }
       const mr = Qr * RHO / 1000, mb = Qb * RHO / 1000, mh = Qh * RHO / 1000, m = Q * RHO / 1000;
 
@@ -547,9 +561,11 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
     };
     // hydraulics summary, last 5 min averages; plus what a fully open thermostat costs at the same pump speed
     const m_ = k => H[k] / H.n, sBar = m_('s');
-    const withStat = net(sBar, P.k_rad_fixed + kStatFull), noStat = net(sBar, P.k_rad_fixed);
+    const xBar = m_('lift');
+    const withStat = net(sBar, P.k_rad_fixed + kOrif(P.cdA_jig + xMax * P.cdA_full), kBp ? kBp + kDisc(xMax) : null),
+      noStat = net(sBar, P.k_rad_fixed, kBp);
     sum.hyd = { pump: m_('pump'), eng: m_('eng'), core: m_('core'), hose: m_('hose'), stat: m_('stat'), bp: m_('bp'),
-      restr: m_('restr'), heater: m_('heater'), Q: m_('Q') * 60, Qr: m_('Qr') * 60, lift: m_('lift') * 100, rpm: sBar * 6000 / o.pulley,
+      restr: m_('restr'), disc: m_('disc'), Qb: m_('Qb') * 60, heater: m_('heater'), Q: m_('Q') * 60, Qr: m_('Qr') * 60, lift: m_('lift') * 100, rpm: sBar * 6000 / o.pulley,
       statOpen: { k: kStatFull, kRadPath: P.k_rad_fixed + kStatFull, share: kStatFull / (P.k_rad_fixed + kStatFull),
         dp: kStatFull * withStat.Qr ** 2, QrWith: withStat.Qr * 60, QrWithout: noStat.Qr * 60 } };
     return { opts: o, log, sum };
@@ -588,6 +604,10 @@ const PRESETS = [
   { name: '10 mm restrictor', o: { bypass: 10 } },
   { name: 'Blocked + thermostat', o: { bypass: 0 } },
   { name: 'Delete kit', o: { bypass: 0, stat: false } },
+  { name: 'Worn thermostat (60% lift)', o: { statLift: 60 } },
+  { name: 'Worn thermostat + 14 mm', o: { statLift: 60, bypass: 14 } },
+  { name: 'Thermostat without disc', o: { statDisc: false } },
+  { name: 'No disc + 14 mm', o: { statDisc: false, bypass: 14 } },
   { name: 'Recommended build', o: { bypass: 14, core: 60, duct: 83, ocPct: 16.4, ocThick: 50, ocModel: '19-330', ocMount: 'side' } },
 ];
 
@@ -595,7 +615,7 @@ const ductWord = d => d < 15 ? 'none, air spills around' : d < 40 ? 'loose shrou
 function describe(o) {
   const p = [];
   p.push(o.bypass <= 0 ? 'bypass blocked' : o.bypass >= 28 ? 'bypass open' : `${o.bypass} mm restrictor`);
-  p.push(o.stat ? `stat ${o.statOpen}°C` : 'no stat');
+  p.push(o.stat ? `stat ${o.statOpen}°C${o.statDisc ? '' : ' no disc'}${o.statLift < 100 ? ` worn ${o.statLift}%` : ''}` : 'no stat');
   p.push(`${o.core} mm rad`, `duct ${o.duct}%`);
   if (o.ocPct > 0) { const m = OC_MODELS.find(x => x.id === o.ocModel); p.push(`oil cooler ${m && m.w ? m.short : o.ocPct + '%'} ${o.ocMount === 'front' ? 'front' : 'own duct'}`); }
   if (!o.heater) p.push('heater deleted');
@@ -678,7 +698,8 @@ function Hydraulics({ h, o }) {
     ['Hoses + 32 mm necks', h.hose, 'var(--cold)', 'radiator path'],
     [o.stat ? `Thermostat (${h.lift.toFixed(0)}% open)` : 'Thermostat (removed)', h.stat, 'var(--accent)', 'radiator path'],
     ...(o.bypass > 0 ? [['Bypass passage 28 mm', h.bp, 'var(--warn)', 'bypass path'],
-      ...(o.bypass < 28 ? [[`Restrictor ${o.bypass} mm`, h.restr, 'var(--warn)', 'bypass path']] : [])] : []),
+      ...(o.bypass < 28 ? [[`Restrictor ${o.bypass} mm`, h.restr, 'var(--warn)', 'bypass path']] : []),
+      ...(o.stat && o.statDisc ? [['Bypass disc (thermostat back)', h.disc, 'var(--warn)', 'bypass path · closes as the thermostat opens']] : [])] : []),
     ...(o.heater ? [['Heater loop', h.heater, 'var(--violet)', 'heater path']] : []),
   ];
   const mx = Math.max(...rows.map(r => r[1]), 1), so = h.statOpen;
@@ -689,11 +710,12 @@ function Hydraulics({ h, o }) {
       <span class="hl">${l}<small>${n}</small></span>
       <span class="hb"><i style=${{ width: (100 * v / mx).toFixed(1) + '%', background: c }}></i></span>
       <span class="hv">${v.toFixed(1)} kPa</span></div>`)}</div>
-    <p class="hyd-note">Parallel paths share one pressure drop: radiator path ${radPath.toFixed(1)} kPa${o.bypass > 0 ? `, bypass ${(h.bp + h.restr).toFixed(1)}` : ''}${o.heater ? `, heater ${h.heater.toFixed(1)}` : ''}.
+    <p class="hyd-note">Parallel paths share one pressure drop: radiator path ${radPath.toFixed(1)} kPa${o.bypass > 0 ? `, bypass ${(h.bp + h.restr + h.disc).toFixed(1)}` : ''}${o.heater ? `, heater ${h.heater.toFixed(1)}` : ''}.
       Pump ${h.Q.toFixed(0)} L/min at ~${h.rpm.toFixed(0)} rpm average.</p>
-    <p class="hyd-call"><b>A new, fully open thermostat</b> (34 mm valve, 10 mm lift) is ${(100 * so.share).toFixed(0)}% of the radiator path's resistance:
-      ${so.dp.toFixed(1)} kPa here. Without it the radiator would get ${so.QrWithout.toFixed(0)} instead of ${so.QrWith.toFixed(0)} L/min (+${gain.toFixed(0)}%).
-      Toggle "Thermostat fitted" off to see what that does to temperature.</p>
+    <p class="hyd-call"><b>A new, fully open thermostat</b>${` (34 mm valve, 10 mm lift) is ${(100 * so.share).toFixed(0)}% of the radiator path's resistance. ` +
+      (o.statDisc && o.bypass > 0 ? 'But its back disc also shuts the bypass, so removing it' : 'Removing it') +
+      ` (bypass ${o.bypass > 0 ? 'left open' : 'blocked'}) would give the radiator ${so.QrWithout.toFixed(0)} instead of ${so.QrWith.toFixed(0)} L/min (${gain >= 0 ? '+' : ''}${gain.toFixed(0)}%).` +
+      (o.stat ? ` Average bypass flow now: ${h.Qb.toFixed(0)} L/min at ${h.lift.toFixed(0)}% lift.` : '')}</p>
   </div>`;
 }
 
@@ -795,6 +817,11 @@ function App() {
           <${Toggle} id="stat" label="Thermostat fitted" checked=${o.stat} onChange=${set('stat')} />
           <${Slider} id="statOpen" label="Thermostat opening temp" value=${o.statOpen} min=${60} max=${95} unit="°C" disabled=${!o.stat}
             fmt=${v => `${v}–${v + 8}°C`} hint="Starts opening at this temp, fully open 8°C higher. Stock: 82–90." onChange=${set('statOpen')} />
+          <${Toggle} id="statDisc" label="Thermostat has bypass disc" checked=${o.statDisc} onChange=${set('statDisc')}
+            hint="The Toyota UZ thermostat has a disc on its back that closes the bypass as the main valve opens. Many aftermarket or racing thermostats don't." />
+          <${Slider} id="statLift" label="Thermostat condition" value=${o.statLift} min=${40} max=${100} step=${5} disabled=${!o.stat}
+            fmt=${v => v >= 100 ? 'new · 10 mm lift' : `worn · ${(v / 10).toFixed(1)} mm lift`} ends=${['worn out', 'new']}
+            hint="Old wax or a tired spring stops short of full lift: the main valve stays smaller and the bypass disc never seats." onChange=${set('statLift')} />
           <${Toggle} id="heaterDel" label="Heater deleted" checked=${!o.heater} onChange=${v => set('heater')(!v)}
             hint="A Miata has no heater valve, so unless the heater is deleted its core always flows: a small second bypass around the radiator." />
           <${Slider} id="pulley" label="Water pump speed" value=${o.pulley} min=${0.7} max=${1.3} step=${0.05} fmt=${v => '×' + v.toFixed(2)}

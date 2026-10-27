@@ -9,7 +9,7 @@ rows = {}
 for l in open(sys.argv[1]):
     h = l.split('{')[0].split(); j = json.loads(l[l.index('{'):])
     kv = dict(x.split('=') for x in h[2:]); rows[(h[1], kv['oc'], kv['fc'], kv['duct'], kv['core'])] = j
-C = ['stock', 'r14', 'delete']; CL = ['no restrictor', '14 mm', 'delete']
+C = ['stock', 'stock+worn60', 'delete']; CL = ['new thermostat', 'worn thermostat (60%)', 'delete kit']
 OC = ['none', 'front', 'side']; OL = ['no oil cooler', 'oil cooler in front of rad (20%)', 'oil cooler own duct']
 col = ['0.55', 'tab:orange', 'tab:green']
 fig, ax = plt.subplots(2, 2, figsize=(12, 8.5))

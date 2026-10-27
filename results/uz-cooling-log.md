@@ -63,3 +63,10 @@ Track avg speed slider 50-160 km/h (lap speeds scaled, solved to hit the average
 3UZ = 4.3 L @ 67 hp/L -> more wall area per kW than the 4-cyl calibration cars -> fc at top of fit range: 0.75. Shift 6500 (limiter ~7000).
 RESULT 42mm/0.25: stock 143 (boil 3.1 min) | r18 138 | r14 135 | r10 133 | blocked 130 | blockedNH boils 62 s | delete 130 (all boil eventually).
 Best (60mm, duct 0.35, r14, 19-row wide own duct): 95. Tight 60 km/h @40% WOT: stock 152, best 101. fc 0.65/0.75/0.85 -> 129/143/158 stock.
+
+## Round 6 — thermostat bypass disc (2026-10-27, Jan: back of the stat closes the bypass when open)
+Model: bypass path + disc orifice, curtain pi*28mm*(10mm*(1-lift)+0.3mm leak). Thermostat condition = max lift.
+RESULT new stat w/ disc: 131 (r14 131, r10 131: restrictor does nothing, bypass leak ~8 L/min).
+       worn 80%: 135 | worn 60%: 139, +r14 136, +r10 134 | no disc: 143, +r14 135, +r10 133 | blocked 130 | delete 130.
+       Removing the stat w/ bypass open: Qr 159 -> 100 L/min (disc gone). Best build 95.
+Verdict flips: restrictor only matters for worn/discless thermostats; fresh OEM stat = up to -8C; airflow = real fix.
