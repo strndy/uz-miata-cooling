@@ -71,12 +71,13 @@ def torque_wot(rpm):  # 3UZ-FE: 434 Nm @3400, 216 kW @5600
     return 434 - 66 * ((rpm - 3400) / 2200) ** 2
 
 GEAR_TOP = [18, 27, 37, 48, 62]   # m/s at 6200 rpm, per gear
+SHIFT = 6500                      # shift point rpm
 
 def rpm_from_v(v):
     for g in GEAR_TOP:
-        if v <= 0.98 * g:
+        if v <= 0.98 * g * SHIFT / 6200:
             return max(1500.0, 6200 * v / g)
-    return 6200.0
+    return float(SHIFT)
 
 # lap: (WOT seconds, corner speed after the braking zone m/s, off-throttle seconds)
 LAP = [(12, 22, 5), (6, 28, 4), (20, 18, 7), (8, 25, 5), (10, 30, 4), (9, 20, 10)]  # 65 s WOT / 35 s off
@@ -99,7 +100,7 @@ def eps_xflow(NTU, Cr):
         return 1 - math.exp(-NTU)
     return 1 - math.exp((NTU ** 0.22 / Cr) * (math.exp(-Cr * NTU ** 0.78) - 1))
 
-def run(case, fc=0.70, duct=0.25, t_end=1200.0, dt=0.02, overrides=None, oc='none', heater=True):
+def run(case, fc=0.75, duct=0.25, t_end=1200.0, dt=0.02, overrides=None, oc='none', heater=True):
     p = dict(P, **(overrides or {}))
     has_stat = case != 'delete'
     if case in ('stock',):
@@ -234,7 +235,7 @@ def summarize(log):
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('case')
-    ap.add_argument('--fc', type=float, default=0.70, help='coolant heat / brake power at WOT')
+    ap.add_argument('--fc', type=float, default=0.75, help='coolant heat / brake power at WOT')
     ap.add_argument('--duct', type=float, default=0.25, help='radiator face velocity / car speed')
     ap.add_argument('--t', type=float, default=1200)
     ap.add_argument('--tair', type=float, default=30.0)

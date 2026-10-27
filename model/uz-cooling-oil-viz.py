@@ -13,8 +13,8 @@ C = ['stock', 'r14', 'delete']; CL = ['no restrictor', '14 mm', 'delete']
 OC = ['none', 'front', 'side']; OL = ['no oil cooler', 'oil cooler in front of rad (20%)', 'oil cooler own duct']
 col = ['0.55', 'tab:orange', 'tab:green']
 fig, ax = plt.subplots(2, 2, figsize=(12, 8.5))
-for r, (fc, du, co, ttl) in enumerate([('0.7', '0.25', '42.0', 'IL 42mm rad, duct 0.25 (current)'),
-                                       ('0.7', '0.35', '60.0', '60mm rad, duct 0.35 (fixed front end)')]):
+for r, (fc, du, co, ttl) in enumerate([('0.75', '0.25', '42.0', 'IL 42mm rad, duct 0.25 (current)'),
+                                       ('0.75', '0.35', '60.0', '60mm rad, duct 0.35 (fixed front end)')]):
     for k, key, lab in [(0, 'T_ect_last5min', 'coolant ECT °C'), (1, 'T_oil_last5min', 'oil °C')]:
         a = ax[r, k]
         for i, oc in enumerate(OC):
@@ -24,7 +24,7 @@ for r, (fc, du, co, ttl) in enumerate([('0.7', '0.25', '42.0', 'IL 42mm rad, duc
             for p_, v in zip(pos, vals):
                 a.text(p_, v + 1, f'{v:.0f}', ha='center', fontsize=8)
             if r == 0 and k == 0:
-                lo = [rows[(c, oc, '0.6', du, co)][key] for c in C]; hi = [rows[(c, oc, '0.8', du, co)][key] for c in C]
+                lo = [rows[(c, oc, '0.65', du, co)][key] for c in C]; hi = [rows[(c, oc, '0.85', du, co)][key] for c in C]
                 a.errorbar(pos, vals, yerr=[np.array(vals) - lo, np.array(hi) - vals], fmt='none', ecolor='k', capsize=3, lw=.8)
         a.axhline(128 if k == 0 else 130, color='k', ls=':', lw=1)
         a.text(2.45, (128 if k == 0 else 130) + 1, 'boil' if k == 0 else 'oil ~130 limit', fontsize=7, ha='right')

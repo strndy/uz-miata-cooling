@@ -148,10 +148,11 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
     return kK(0.5 * (1 - b2) ** 0.75 + (1 - b2) ** 2, d);
   }
   const torqueWot = rpm => 434 - 66 * ((rpm - 3400) / 2200) ** 2;   // 3UZ-FE stock
-  const GEAR_TOP = [18, 27, 37, 48, 62];
+  const GEAR_TOP = [18, 27, 37, 48, 62];   // m/s at 6200 rpm per gear (fixed gearing)
+  let SHIFT = 6500;
   function rpmFromV(v) {
-    for (const g of GEAR_TOP) if (v <= 0.98 * g) return Math.max(1500, 6200 * v / g);
-    return 6200;
+    for (const g of GEAR_TOP) if (v <= 0.98 * g * SHIFT / 6200) return Math.max(1500, 6200 * v / g);
+    return SHIFT;
   }
   const LAP = [[12, 22, 5], [6, 28, 4], [20, 18, 7], [8, 25, 5], [10, 30, 4], [9, 20, 10]]; // wot s, corner m/s, off s
 
@@ -167,7 +168,7 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
     ww: false,           // Water Wetter (surfactant): ~+8% coolant-side heat transfer
     ocPct: 0, ocThick: 42, ocMount: 'front', ocModel: 'custom',
     ocStat: true, ocOpen: 80,   // oil thermostat (sandwich plate): opens at ocOpen, full at +10
-    fc: 0.70, fOil: 0.22,
+    fc: 0.75, fOil: 0.22, shift: 6500,
   };
 
   // Lap: six straights. All speeds (corners, top-speed asymptote, start) scale by f; f is solved so the
@@ -195,6 +196,7 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
 
   function run(opts) {
     const o = Object.assign({}, DEFAULTS, opts);
+    SHIFT = o.shift;
     const dt = 0.02, steps = Math.round(o.minutes * 60 / dt), every = Math.round(1 / dt);
     const CP = 4190 - 11.8 * o.glycol;
     // coolant-side heat transfer vs mix: glycol is more viscous, worse conductor (h ~ -35% at 50/50 vs water).
@@ -359,10 +361,11 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
     return kK(0.5 * (1 - b2) ** 0.75 + (1 - b2) ** 2, d);
   }
   const torqueWot = rpm => 434 - 66 * ((rpm - 3400) / 2200) ** 2;   // 3UZ-FE stock
-  const GEAR_TOP = [18, 27, 37, 48, 62];
+  const GEAR_TOP = [18, 27, 37, 48, 62];   // m/s at 6200 rpm per gear (fixed gearing)
+  let SHIFT = 6500;
   function rpmFromV(v) {
-    for (const g of GEAR_TOP) if (v <= 0.98 * g) return Math.max(1500, 6200 * v / g);
-    return 6200;
+    for (const g of GEAR_TOP) if (v <= 0.98 * g * SHIFT / 6200) return Math.max(1500, 6200 * v / g);
+    return SHIFT;
   }
   const LAP = [[12, 22, 5], [6, 28, 4], [20, 18, 7], [8, 25, 5], [10, 30, 4], [9, 20, 10]]; // wot s, corner m/s, off s
 
@@ -378,7 +381,7 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
     ww: false,           // Water Wetter (surfactant): ~+8% coolant-side heat transfer
     ocPct: 0, ocThick: 42, ocMount: 'front', ocModel: 'custom',
     ocStat: true, ocOpen: 80,   // oil thermostat (sandwich plate): opens at ocOpen, full at +10
-    fc: 0.70, fOil: 0.22,
+    fc: 0.75, fOil: 0.22, shift: 6500,
   };
 
   // Lap: six straights. All speeds (corners, top-speed asymptote, start) scale by f; f is solved so the
@@ -406,6 +409,7 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
 
   function run(opts) {
     const o = Object.assign({}, DEFAULTS, opts);
+    SHIFT = o.shift;
     const dt = 0.02, steps = Math.round(o.minutes * 60 / dt), every = Math.round(1 / dt);
     const CP = 4190 - 11.8 * o.glycol;
     // coolant-side heat transfer vs mix: glycol is more viscous, worse conductor (h ~ -35% at 50/50 vs water).
@@ -605,6 +609,7 @@ function describe(o) {
   if (o.vTrack !== D.vTrack) p.push(`track avg ${o.vTrack} km/h`);
   if (o.pulley !== D.pulley) p.push(`pump ×${o.pulley}`);
   if (o.fc !== D.fc) p.push(`heat ${o.fc}`);
+  if (o.shift !== D.shift) p.push(`shift ${o.shift}`);
   return p.join(' · ');
 }
 
@@ -833,6 +838,8 @@ function App() {
         <${Group} title="Engine and track" open=${false}>
           <${Slider} id="hp" label="Engine power" value=${o.hp} min=${200} max=${450} step=${10} unit=" hp" hint="3UZ-FE stock: 290 hp" onChange=${set('hp')} />
           <${Slider} id="wot" label="Full throttle share of lap" value=${o.wot} min=${30} max=${85} unit="%" onChange=${set('wot')} />
+          <${Slider} id="shift" label="Shift point" value=${o.shift} min=${5500} max=${7000} step=${100} unit=" rpm"
+            hint="3UZ-FE peak power at 5600 rpm; limiters are usually set around 7000." onChange=${set('shift')} />
           <${Slider} id="vTrack" label="Track average speed" value=${o.vTrack} min=${50} max=${160} step=${5} unit=" km/h" ends=${['tight, 50', 'fast, 160']} onChange=${set('vTrack')}
             hint=${(s ? `Top speed ≈${s.vMax.toFixed(0)} km/h. ` : '') + '141 = fast circuit, 60 = tight club or kart-style track. Slow tracks put less air through the radiator; they usually have less full throttle too, so lower that as well.'} />
           <${Slider} id="minutes" label="Session length" value=${o.minutes} min=${5} max=${40} unit=" min" onChange=${set('minutes')} />
@@ -840,7 +847,7 @@ function App() {
         <//>
         <${Group} title="Model calibration" open=${false}>
           <${Slider} id="fc" label="Engine heat into coolant + oil" value=${o.fc} min=${0.5} max=${0.9} step=${0.05} fmt=${v => `${v.toFixed(2)} × power`}
-            hint="Fitted to forum track data from turbo and supercharged Miatas: 0.70. Absolute temps ±20°C, comparisons are solid." onChange=${set('fc')} />
+            hint="Forum track data from turbo and supercharged Miatas fits 0.65–0.75. Default 0.75: a big 4.3 L V8 at 67 hp/L has more hot wall area per kW. Absolute temps ±20°C, comparisons are solid." onChange=${set('fc')} />
           <${Slider} id="fOil" label="Share of that heat into oil" value=${o.fOil} min=${0.1} max=${0.35} step=${0.01} fmt=${v => Math.round(v * 100) + '%'} onChange=${set('fOil')} />
         <//>
         ${shared && html`<div class="sharebox" role="status">${shared === 'Link copied' ? 'Link with these settings copied.' :

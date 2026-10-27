@@ -14,10 +14,11 @@
     return kK(0.5 * (1 - b2) ** 0.75 + (1 - b2) ** 2, d);
   }
   const torqueWot = rpm => 434 - 66 * ((rpm - 3400) / 2200) ** 2;   // 3UZ-FE stock
-  const GEAR_TOP = [18, 27, 37, 48, 62];
+  const GEAR_TOP = [18, 27, 37, 48, 62];   // m/s at 6200 rpm per gear (fixed gearing)
+  let SHIFT = 6500;
   function rpmFromV(v) {
-    for (const g of GEAR_TOP) if (v <= 0.98 * g) return Math.max(1500, 6200 * v / g);
-    return 6200;
+    for (const g of GEAR_TOP) if (v <= 0.98 * g * SHIFT / 6200) return Math.max(1500, 6200 * v / g);
+    return SHIFT;
   }
   const LAP = [[12, 22, 5], [6, 28, 4], [20, 18, 7], [8, 25, 5], [10, 30, 4], [9, 20, 10]]; // wot s, corner m/s, off s
 
@@ -33,7 +34,7 @@
     ww: false,           // Water Wetter (surfactant): ~+8% coolant-side heat transfer
     ocPct: 0, ocThick: 42, ocMount: 'front', ocModel: 'custom',
     ocStat: true, ocOpen: 80,   // oil thermostat (sandwich plate): opens at ocOpen, full at +10
-    fc: 0.70, fOil: 0.22,
+    fc: 0.75, fOil: 0.22, shift: 6500,
   };
 
   // Lap: six straights. All speeds (corners, top-speed asymptote, start) scale by f; f is solved so the
@@ -61,6 +62,7 @@
 
   function run(opts) {
     const o = Object.assign({}, DEFAULTS, opts);
+    SHIFT = o.shift;
     const dt = 0.02, steps = Math.round(o.minutes * 60 / dt), every = Math.round(1 / dt);
     const CP = 4190 - 11.8 * o.glycol;
     // coolant-side heat transfer vs mix: glycol is more viscous, worse conductor (h ~ -35% at 50/50 vs water).

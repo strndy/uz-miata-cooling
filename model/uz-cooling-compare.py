@@ -22,7 +22,7 @@ a0 = fig.add_subplot(gs[0, :]); a1 = fig.add_subplot(gs[1, 0]); a2 = fig.add_sub
 ends, lo, hi, qr, boil = [], [], [], [], []
 for c in CASES:
     runs = [load(f) for f in glob.glob(os.path.join(d, f'{c}_fc*_d*.json'))]
-    nom = next(r for r in runs if r['fc'] == 0.7 and r['duct'] == 0.25)
+    nom = next(r for r in runs if r['fc'] == 0.75 and r['duct'] == 0.25)
     t = np.array([x['t'] for x in nom['log']]) / 60
     T = np.array([x['T_ect'] for x in nom['log']])
     a0.plot(t, np.minimum(T, 160), color=COL[c], lw=2 if c in ('stock', 'r14', 'delete') else 1.2, label=LABEL[c])
@@ -33,7 +33,7 @@ a0.axhline(BOIL, color='k', ls=':', lw=1); a0.text(0.1, BOIL + 1, 'boil 50/50 @ 
 a0.axhspan(82, 90, color='green', alpha=0.08)
 a0.set_ylim(60, 160); a0.set_xlim(0, 20); a0.set_ylabel('ECT °C'); a0.set_xlabel('session time [min]')
 a0.legend(fontsize=9, ncol=3, loc='lower right'); a0.grid(alpha=.3)
-a0.set_title('Same session: fast track (avg 141 km/h), 30°C air, 65% WOT, start 70°C, IL 42mm rad, heater loop flowing (heat 0.70, duct 0.25)', fontsize=10)
+a0.set_title('Same session: fast track (avg 141 km/h), 30°C air, 65% WOT, start 70°C, IL 42mm rad, heater loop flowing (heat 0.75, duct 0.25)', fontsize=10)
 
 x = np.arange(len(CASES))
 show = [min(e, 160) for e in ends]
@@ -61,7 +61,7 @@ for ci, core in enumerate(cores):
     for di, du in enumerate(ducts):
         vals = []
         for c in grp:
-            f = os.path.join(d, f'rad-c{core}', f'{c}_fc0.7_d{du}.json')
+            f = os.path.join(d, f'rad-c{core}', f'{c}_fc0.75_d{du}.json')
             vals.append(load(f)['summary']['T_ect_last5min'])
         pos = np.arange(len(grp)) + (k - 2.5) * w
         bars = a3.bar(pos, vals, w, label=f'{core}mm core, duct {du}', color=plt.cm.viridis(k / 5))

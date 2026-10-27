@@ -41,7 +41,7 @@ The parallel branches share one pressure drop, so flow splits as `Q_i ∝ 1/√k
 ### 2. Heat input
 
 - 3UZ-FE full-throttle torque: `T = 434 − 66·((rpm − 3400)/2200)²` Nm (434 Nm at 3400, 216 kW at 5600), scaled by the power slider.
-- Heat into the engine at full throttle = **fc × brake power**, with fc = 0.70 (calibrated, see below). Off throttle: 8 kW.
+- Heat into the engine at full throttle = **fc × brake power**, with fc = 0.75 (calibrated, see below). Off throttle: 8 kW.
 - 22 % of that heat goes to the oil (bearings, pistons, valvetrain) and the rest to the metal of the block and heads.
 
 ### 3. Thermal nodes
@@ -81,8 +81,8 @@ Plug-flow cells give real transport delays. That's what produces the hot and col
 
 ### 7. Track session
 
-- **Track speed:** a lap with six straights. Corner speeds, the top-speed limit and the start speed all scale by one factor, solved so the lap average matches the slider (50–160 km/h). 141 km/h (top ≈225) is a fast circuit; 60 km/h (top ≈86) is a tight club or kart-style track. Slow tracks put less air through the radiator and usually need a lower full-throttle share too. Full-throttle time (65 % by default) accelerates at `a = 5·(1 − (v/65)²)` m/s², scaled with power. Braking at 9 m/s² down to each corner speed (18–30 m/s).
-- **Gearing:** five gears, shifting at 6200 rpm.
+- **Track speed:** a lap with six straights. Corner speeds, the top-speed limit and the start speed all scale by one factor, solved so the lap average matches the slider (50–160 km/h). 141 km/h (top ≈225) is a fast circuit; 60 km/h (top ≈113) is a tight club or kart-style track. Slow tracks put less air through the radiator and usually need a lower full-throttle share too. Full-throttle time (65 % by default) accelerates at `a = 5·(1 − (v/65)²)` m/s², scaled with power. Braking at 9 m/s² down to each corner speed (18–30 m/s).
+- **Gearing:** five gears, shift point 6500 rpm by default (slider 5500–7000; 3UZ-FE peak power is at 5600, limiters usually sit around 7000). Torque falls off past peak power: `T = 434 − 66·((rpm − 3400)/2200)²` Nm.
 - **Start:** whole loop at the start temperature, thermostat closed.
 - **Boiling point:** `100 + 0.12·glycol% + 20·cap_bar` °C (50/50 at 1.1 bar ≈ 128 °C). Readings above it aren't physical: the coolant would boil over first.
 
@@ -96,32 +96,33 @@ Two numbers carry most of the uncertainty: **fc** (engine heat into the coolant 
 - **Supercharged Miata** (~140 kW), 37 mm Koyo, summer heat → 96–102 °C (same thread). The model gives 94–104 °C.
 - **Adapt Lab** (vendor's own numbers, not independent): UZ under hard use 104 °C and up; with the restrictor and a 77 °C (170 °F) thermostat, 84–89 °C. ([article](https://adapt-lab.com/2025/07/27/beat-the-heat-why-every-uz-engine-needs-adapt-labs-coolant-bypass-restrictor/), [product](https://adapt-lab.com/product/coolant-bypass-restrictor/))
 
-Result: fc = 0.70 and ducting 50 % (face velocity 25 % of car speed) as defaults. Once the sliders rest, the calculator also re-runs with fc ±0.1 and shows the coolant range.
+Result: the Miata data fits fc 0.65–0.75. **Default fc = 0.75**, the top of that range, because the 3UZ is a big 4.3 L V8 at 67 hp/L with more hot wall area per kW than the 1.6–1.8 L four-cylinders behind the forum numbers. Ducting default 50 % (face velocity 25 % of car speed). Once the sliders rest, the calculator also re-runs with fc ±0.1 and shows the coolant range.
 
 ## Results
 
 ![comparison](results/panels/uz-cooling-compare.png)
 
-Default scenario: 3UZ-FE stock (290 hp), stock water pump, stock inlet-side thermostat (82 °C open / 90 °C full, 2 mm jiggle hole, no bypass disc), 28 mm bypass, IL Motorsport 42 mm aluminium radiator in the NA Miata frame, heater loop flowing (no valve), 50/50 coolant, fast circuit (avg ≈141 km/h), 30 °C air, 65 % full throttle, start at 70 °C with the thermostat closed.
+Default scenario: 3UZ-FE stock (290 hp, shifting at 6500 rpm), stock water pump, stock inlet-side thermostat (82 °C open / 90 °C full, 10 mm lift, 2 mm jiggle hole, no bypass disc), 28 mm bypass, IL Motorsport 42 mm aluminium radiator in the NA Miata frame, heater loop flowing (no valve), 50/50 coolant, fast circuit (avg ≈141 km/h), 30 °C air, 65 % full throttle, start at 70 °C with the thermostat closed. Engine heat into coolant + oil = 0.75 × power.
 
 | Setup | Flow through radiator | Coolant at sensor, last 5 min |
 |---|---|---|
-| Stock bypass (28 mm, no restrictor) | 88 L/min (**59 % of the pump flow skips the radiator**: bypass + heater) | 136 °C, boils after ~4.2 min |
-| 18 mm restrictor | 107 L/min | 132 °C, boils after ~5.9 min |
-| 14 mm restrictor | 123 L/min | 128 °C, boils after ~7.6 min |
-| 10 mm restrictor | 139 L/min | 126 °C |
-| Bypass blocked, thermostat fitted, heater flowing | 158 L/min | 124 °C |
-| Bypass blocked, thermostat fitted, **heater deleted** | 66 L/min | **boils in ~68 s** (thermostat never sees hot water) |
-| Delete kit (no thermostat, bypass blocked) | 167 L/min | 123 °C |
-| 60 mm radiator + sealed ducting + 14 mm + oil cooler in its own duct | — | ~93 °C |
+| Stock bypass (28 mm, no restrictor) | 93 L/min (**58 % of the pump flow skips the radiator**: bypass + heater) | 143 °C, boils after ~3.1 min |
+| 18 mm restrictor | 112 L/min | 138 °C, boils after ~3.9 min |
+| 14 mm restrictor | 129 L/min | 135 °C, boils after ~4.2 min |
+| 10 mm restrictor | 146 L/min | 133 °C, boils after ~4.3 min |
+| Bypass blocked, thermostat fitted, heater flowing | 166 L/min | 130 °C, boils after ~5.9 min |
+| Bypass blocked, thermostat fitted, **heater deleted** | 81 L/min | **boils in ~62 s** (thermostat never sees hot water) |
+| Delete kit (no thermostat, bypass blocked) | 175 L/min | 130 °C, boils after ~5.9 min |
+| 60 mm radiator + sealed ducting + 14 mm + 19-row wide oil cooler in its own duct | — | **~95 °C** |
 
 - **The restrictor works.** The stock UZ bypass has less resistance than the radiator path, so most of the flow skips the radiator. A restrictor is worth 5–10 °C, with diminishing returns below ~14 mm.
-- **It doesn't fix a small radiator.** The air side of the radiator is the limit. Ducting (none → sealed) and core thickness (42 → 60 mm) are each worth ~15–17 °C.
-- **Blocking the bypass with the thermostat fitted only works because of the heater loop.** The thermostat sits on the pump inlet and reads the bypass water. With the bypass blocked, the heater core (no valve on a Miata) becomes the only hot flow reaching it, about 29 L/min, which acts like a ~10 mm restrictor. **Delete the heater as well and it boils in about a minute**: the thermostat only sees cold radiator water through its 2 mm hole and opens far too late.
-- **Oil cooler:** stacked in front of the radiator it removes ~13 kW from the oil but pre-heats 20 % of the radiator to ~75 °C, so coolant drops only 3–5 °C. In its own duct, coolant drops 10–15 °C. Without one, oil sits at ~155–165 °C.
-- **A brand-new, fully open thermostat still costs flow.** At 10 mm lift it is ~25 % of the radiator path's resistance: 2.7 kPa on the stock layout, 5 kPa with a 14 mm restrictor. Removing it (bypass kept) raises radiator flow ~9 % (88 → 96 L/min) and is worth only 1–2 °C. The thermostat is a minor loss; the bypass is the big one.
-- **Tight tracks are harder on cooling.** At 60 km/h average the same car runs far hotter, because there's less ram air. Even at 40 % full throttle the stock setup boils (~144 °C). The 60 mm radiator + sealed duct + 14 mm + oil cooler in its own duct still holds ~97 °C there.
-- **Coolant:** pure water + Water Wetter instead of 50/50 is worth ~10 °C on coolant, but the boiling point drops from 128 to 122 °C at a 1.1 bar cap. Water Wetter alone in 50/50 is worth ~1–2 °C.
+- **It doesn't fix a small radiator.** On the 42 mm radiator every bypass option still boils on a hot fast track. The air side of the radiator is the limit. Sealed ducting (duct 0.25 → 0.35) or a 60 mm core are each worth ~18 °C.
+- **Blocking the bypass with the thermostat fitted only works because of the heater loop.** The thermostat sits on the pump inlet and reads the bypass water. With the bypass blocked, the heater core (no valve on a Miata) becomes the only hot flow reaching it, about 30 L/min, which acts like a ~10 mm restrictor. **Delete the heater as well and it boils in about a minute**: the thermostat only sees cold radiator water through its 2 mm hole and opens far too late.
+- **A brand-new, fully open thermostat still costs flow.** At 10 mm lift it is ~25 % of the radiator path's resistance: ~3 kPa on the stock layout, ~6 kPa with a 14 mm restrictor. Removing it (bypass kept) raises radiator flow ~9 % (92 → 100 L/min) and is worth only ~2 °C. The thermostat is a minor loss; the bypass is the big one.
+- **Oil cooler:** stacked in front of the radiator it removes ~15 kW from the oil but pre-heats 20 % of the radiator to ~78 °C, so coolant drops only 3–5 °C. In its own duct, coolant drops ~14–16 °C. Without one, oil sits at ~160–175 °C.
+- **Tight tracks are harder on cooling.** At 60 km/h average there's much less ram air. Even at 40 % full throttle the stock setup boils (~152 °C). The 60 mm radiator + sealed duct + 14 mm + oil cooler in its own duct still holds ~101 °C there.
+- **Coolant:** pure water + Water Wetter instead of 50/50 is worth ~10 °C on coolant, but the boiling point drops from 128 to 122 °C at a 1.1 bar cap. Water Wetter alone in 50/50 is worth ~1.5 °C.
+- **Calibration matters more than any part:** engine heat 0.65 / 0.75 / 0.85 × power gives 129 / 143 / 158 °C on the stock setup. The ranking between setups doesn't change.
 - **Fitment:** the Adapt Lab restrictor fits the 1990–97 non-VVTi and 2002+ 3UZ water inlet housing, part **16032-50110**.
 
 **Accuracy:** absolute temperatures are ±20 °C, because the model is calibrated on forum track data, not on a logged 3UZ Miata. **Differences between setups are the reliable output.** If you have a coolant temperature log from a track session, open an issue: one log pins the calibration.

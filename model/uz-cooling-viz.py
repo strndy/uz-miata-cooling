@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Panel for uz-cooling-1d.py results.
 Usage: uz-cooling-viz.py results/uz-cooling CASE out.png
-Uses CASE_fc0.55_d0.22.json as nominal; every other CASE_fc*_d*.json forms the uncertainty band."""
+Uses CASE_fc0.75_d0.25.json as nominal; every other CASE_fc*_d*.json forms the uncertainty band."""
 import glob, json, os, sys
 import numpy as np
 import matplotlib
@@ -10,14 +10,14 @@ import matplotlib.pyplot as plt
 
 d, case, out = sys.argv[1:4]
 runs = [json.load(open(f)) for f in sorted(glob.glob(os.path.join(d, f'{case}_fc*_d*.json')))]
-nom = next(r for r in runs if r['fc'] == 0.7 and r['duct'] == 0.25)
+nom = next(r for r in runs if r['fc'] == 0.75 and r['duct'] == 0.25)
 L = nom['log']; t = np.array([r['t'] for r in L]) / 60
 g = lambda k, log=L: np.array([r[k] for r in log])
 
 fig, ax = plt.subplots(3, 1, figsize=(10, 11), sharex=True)
 band = np.array([g('T_ect', r['log']) for r in runs])
 ax[0].fill_between(t, band.min(0), band.max(0), color='tab:red', alpha=0.12,
-                   label='ECT band: heat frac 0.60-0.80 × duct 0.20-0.30')
+                   label='ECT band: heat frac 0.65-0.85 × duct 0.20-0.30')
 ax[0].plot(t, g('T_ect'), 'tab:red', lw=2, label='ECT (engine outlet, sensor)')
 ax[0].plot(t, g('T_metal'), 'tab:brown', lw=1, ls='--', label='metal (head hot-side proxy)')
 ax[0].plot(t, g('T_rad_in'), 'tab:orange', lw=1, label='radiator in')

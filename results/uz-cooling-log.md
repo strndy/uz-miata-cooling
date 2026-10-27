@@ -58,3 +58,8 @@ Stat lift 9 -> 10mm (Toyota spec >=10mm @95C). Stock 136 (boil 4.2 min), r18 132
 Fully open stat = 25% of radiator-path k: 2.7 kPa stock / 5.2 kPa with r14; removing it: Qr 88->96 L/min (+9%), ECT -1.3..-2.3C.
 Track avg speed slider 50-160 km/h (lap speeds scaled, solved to hit the average). 60 km/h @65% WOT: 201C (non-physical, boils 2 min);
 60 km/h @40% WOT: 144C; recommended build @60/40%: 97C.
+
+## Round 5 — fc 0.75 default, shift 6500 (2026-10-27)
+3UZ = 4.3 L @ 67 hp/L -> more wall area per kW than the 4-cyl calibration cars -> fc at top of fit range: 0.75. Shift 6500 (limiter ~7000).
+RESULT 42mm/0.25: stock 143 (boil 3.1 min) | r18 138 | r14 135 | r10 133 | blocked 130 | blockedNH boils 62 s | delete 130 (all boil eventually).
+Best (60mm, duct 0.35, r14, 19-row wide own duct): 95. Tight 60 km/h @40% WOT: stock 152, best 101. fc 0.65/0.75/0.85 -> 129/143/158 stock.
