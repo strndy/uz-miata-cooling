@@ -1,3 +1,8 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Interactive 1D cooling-loop model for a 3UZ-FE Miata: bypass restrictor, thermostat, radiator, ducting, oil cooler.">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>3UZ Miata Cooling Lab</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -104,6 +109,7 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
+</head><body>
 <div id="app"><div class="wrap"><div class="empty">Loading the cooling model…</div></div></div>
 
 <script>// 1D cooling-loop model, 3UZ-FE in NA Miata. JS port of scripts/uz-cooling-1d.py (same physics, more knobs).
@@ -519,3 +525,5 @@ function App() {
 }
 ReactDOM.createRoot(document.getElementById('app')).render(html`<${App} />`);
 </script>
+
+</body></html>
