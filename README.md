@@ -92,6 +92,8 @@ Result: fc = 0.70 and ducting 50 % (face velocity 25 % of car speed) as defaults
 
 ## Results
 
+![comparison](results/panels/uz-cooling-compare.png)
+
 Default scenario: 3UZ-FE stock (290 hp), stock water pump, stock inlet-side thermostat (82 °C open / 90 °C full, 2 mm jiggle hole, no bypass disc), 28 mm bypass, IL Motorsport 42 mm aluminium radiator in the NA Miata frame, 30 °C air, 65 % full throttle, start at 70 °C with the thermostat closed.
 
 | Setup | Flow through radiator | Coolant at sensor, last 5 min |
