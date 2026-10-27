@@ -1,36 +1,14 @@
 # uz-miata-cooling
 
-**Does the UZ coolant bypass restrictor work, and what actually fixes a 3UZ-FE Miata overheating on track?**
+## ▶ Open the calculator: **https://uz-miata-cooling.onrender.com**
 
-**Live calculator: https://uz-miata-cooling.onrender.com**
+Move the sliders (restrictor bore, thermostat, radiator thickness, ducting, air temp, oil cooler size, thickness and mounting, pump speed, power, track profile, coolant mix, cap), press **Plot**, and it simulates a 20-minute track session in ~0.2 s. **Keep to compare** overlays up to 5 runs.
 
-Move the sliders (restrictor bore, thermostat, radiator thickness, ducting, air temp, oil cooler size/thickness/mounting, pump speed, power, track profile, coolant mix, cap), press **Plot**, and the page simulates a 20-minute track session in ~0.2 s. **Keep to compare** overlays up to 5 runs.
+## Why
 
-![comparison](results/panels/uz-cooling-compare.png)
+UZ V8s (1UZ / 2UZ / 3UZ) swapped into small cars overheat on track. Vendors sell a coolant **bypass restrictor**: a sleeve that narrows the 28 mm bypass in the water inlet housing so more coolant goes through the radiator ([Adapt Lab article](https://adapt-lab.com/2025/07/27/beat-the-heat-why-every-uz-engine-needs-adapt-labs-coolant-bypass-restrictor/)). The article explains the mechanism but shows no test data, and no independent before/after logs could be found.
 
-## Short answer
-
-Default scenario: 3UZ-FE stock (290 hp), stock water pump, stock inlet-side thermostat (82 °C open / 90 °C full, 2 mm jiggle hole, no bypass disc), 28 mm bypass, IL Motorsport 42 mm aluminium radiator in the NA Miata frame, 30 °C air, 65 % full throttle, start at 70 °C with the thermostat closed.
-
-| Setup | Flow through radiator | Coolant at sensor, last 5 min |
-|---|---|---|
-| Stock bypass (28 mm, no restrictor) | 93 L/min (**56 % of the pump flow skips the radiator**) | 135 °C, boils after ~4.3 min |
-| 18 mm restrictor | 114 L/min | 130 °C, boils after ~6 min |
-| 14 mm restrictor | 134 L/min | 127 °C, at the boiling point |
-| 10 mm restrictor | 153 L/min | 125 °C |
-| Bypass blocked, thermostat fitted | 65 L/min | **boils in ~81 s** (thermostat never sees hot water) |
-| Delete kit (no thermostat, bypass blocked) | 185 L/min | 122 °C |
-| 60 mm radiator + sealed ducting + 14 mm + oil cooler in its own duct | — | ~93 °C |
-
-- **The restrictor works.** The stock UZ bypass has less resistance than the radiator path, so most of the flow skips the radiator. A restrictor is worth 5–10 °C, with diminishing returns below ~14 mm.
-- **It doesn't fix a small radiator.** The air side of the radiator is the limit. Ducting (none → sealed) and core thickness (42 → 60 mm) are each worth ~15–17 °C.
-- **Never block the bypass with the thermostat still fitted.** The thermostat sits on the pump inlet and reads the bypass water. Block the bypass and it only sees cold radiator water through its 2 mm hole, so it opens far too late.
-- **Oil cooler:** stacked in front of the radiator it removes ~13 kW from the oil but pre-heats 20 % of the radiator to ~75 °C, so coolant drops only 3–5 °C. In its own duct, coolant drops 10–15 °C. Without one, oil sits at ~150–160 °C.
-- **Fitment:** the Adapt Lab restrictor fits the 1990–97 non-VVTi and 2002+ 3UZ water inlet housing, part **16032-50110**.
-
-**Accuracy:** absolute temperatures are ±20 °C, because the model is calibrated on forum track data, not on a logged 3UZ Miata. **Differences between setups are the reliable output.** If you have a coolant temperature log from a track session, open an issue: one log pins the calibration.
-
----
+This project tests that claim with physics for one concrete car: **a stock 3UZ-FE in an NA Miata with a 42 mm aluminium radiator, on track at 30 °C.** It asks three questions. Does the restrictor work? What size? And is it the right fix at all compared with ducting, a thicker radiator or an oil cooler?
 
 ## How it calculates
 
@@ -112,7 +90,29 @@ Two numbers carry most of the uncertainty: **fc** (engine heat into the coolant 
 
 Result: fc = 0.70 and ducting 50 % (face velocity 25 % of car speed) as defaults. Every Plot also re-runs with fc ±0.1 and shows the coolant range.
 
-### Limitations
+## Results
+
+Default scenario: 3UZ-FE stock (290 hp), stock water pump, stock inlet-side thermostat (82 °C open / 90 °C full, 2 mm jiggle hole, no bypass disc), 28 mm bypass, IL Motorsport 42 mm aluminium radiator in the NA Miata frame, 30 °C air, 65 % full throttle, start at 70 °C with the thermostat closed.
+
+| Setup | Flow through radiator | Coolant at sensor, last 5 min |
+|---|---|---|
+| Stock bypass (28 mm, no restrictor) | 93 L/min (**56 % of the pump flow skips the radiator**) | 135 °C, boils after ~4.3 min |
+| 18 mm restrictor | 114 L/min | 130 °C, boils after ~6 min |
+| 14 mm restrictor | 134 L/min | 127 °C, at the boiling point |
+| 10 mm restrictor | 153 L/min | 125 °C |
+| Bypass blocked, thermostat fitted | 65 L/min | **boils in ~81 s** (thermostat never sees hot water) |
+| Delete kit (no thermostat, bypass blocked) | 185 L/min | 122 °C |
+| 60 mm radiator + sealed ducting + 14 mm + oil cooler in its own duct | — | ~93 °C |
+
+- **The restrictor works.** The stock UZ bypass has less resistance than the radiator path, so most of the flow skips the radiator. A restrictor is worth 5–10 °C, with diminishing returns below ~14 mm.
+- **It doesn't fix a small radiator.** The air side of the radiator is the limit. Ducting (none → sealed) and core thickness (42 → 60 mm) are each worth ~15–17 °C.
+- **Never block the bypass with the thermostat still fitted.** The thermostat sits on the pump inlet and reads the bypass water. Block the bypass and it only sees cold radiator water through its 2 mm hole, so it opens far too late.
+- **Oil cooler:** stacked in front of the radiator it removes ~13 kW from the oil but pre-heats 20 % of the radiator to ~75 °C, so coolant drops only 3–5 °C. In its own duct, coolant drops 10–15 °C. Without one, oil sits at ~150–160 °C.
+- **Fitment:** the Adapt Lab restrictor fits the 1990–97 non-VVTi and 2002+ 3UZ water inlet housing, part **16032-50110**.
+
+**Accuracy:** absolute temperatures are ±20 °C, because the model is calibrated on forum track data, not on a logged 3UZ Miata. **Differences between setups are the reliable output.** If you have a coolant temperature log from a track session, open an issue: one log pins the calibration.
+
+## Limitations
 
 - No measured 3UZ Miata data yet: absolute temperatures are ±20 °C.
 - The restrictor gain assumes turbulent coolant flow in the radiator tubes (h ∝ Q^0.8). If the tubes run laminar, the gain roughly halves.
@@ -128,7 +128,7 @@ Result: fc = 0.70 and ducting 50 % (face velocity 25 % of car speed) as defaults
 ```
 app/app.html     calculator UI (React 18 UMD + htm, hand-drawn SVG charts)
 app/sim.js       the model in JavaScript (1:1 port of model/uz-cooling-1d.py, parity within 0.1 °C)
-app/build.sh     inlines sim.js into app.html -> app/index.html (deployed) + app/artifact.html
+app/build.sh     inlines sim.js into app.html -> app/index.html (the deployed page)
 model/           Python reference model + panel scripts (numpy, matplotlib)
 results/         study log, calibration notes, panels
 ```

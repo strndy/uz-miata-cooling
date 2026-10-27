@@ -1,10 +1,9 @@
 #!/bin/sh
-# app.html + sim.js -> index.html (full standalone page, Render) and artifact.html (bare body, Claude artifact)
+# app.html + sim.js -> index.html (standalone page served by Render)
 cd "$(dirname "$0")" && python3 -c "
 s=open('app.html').read(); j=open('sim.js').read()
 assert '</script' not in j
 body=s.replace('/*SIM*/', j)
-open('artifact.html','w').write(body)
 head='''<!doctype html>
 <html lang=\"en\"><head><meta charset=\"utf-8\">
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\">
@@ -13,4 +12,4 @@ head='''<!doctype html>
 '''
 i=body.index('<div id=\"app\">')
 open('index.html','w').write(head+body[:i]+'</head><body>\n'+body[i:]+'\n</body></html>\n')
-" && echo built index.html + artifact.html
+" && echo built index.html
