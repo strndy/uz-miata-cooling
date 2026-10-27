@@ -44,7 +44,7 @@ P = dict(
     k_heater=k_from_K(12, 16),           # heater core loop, 16mm hoses (Miata: no valve, always flows)
     stat_open=82.0, stat_full=90.0, stat_tau=15.0,
     hA_housing=15.0,                     # W/K conduction engine->inlet housing/pellet (alu housing bolted to block)
-    stat_cdA_full=0.6 * 960e-6,          # ~34mm valve x 9mm lift curtain
+    stat_cdA_full=0.6 * math.pi * 0.034 * 0.010,   # ~34mm valve x 10mm lift curtain (Toyota spec >=10mm @95C)
     stat_cdA_jiggle=0.6 * math.pi / 4 * 0.002 ** 2,
     # thermal masses / volumes
     m_metal_cp=80 * 900,                 # ~80 kg alu-equiv [J/K] (oil is its own node)

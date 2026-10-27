@@ -66,6 +66,20 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
 .btn.reset { flex: 0 0 auto; padding-inline: 18px; }
 .live { font: 500 11px/1 var(--f-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .live.on { color: var(--warn); }
+.hyd { padding: 12px 16px 14px; }
+.hyd h3 { margin: 0 0 10px; font: 600 14px/1.2 var(--f-display); letter-spacing: .04em; text-transform: uppercase; }
+.hyd-rows { display: flex; flex-direction: column; gap: 6px; }
+.hyd-row { display: grid; grid-template-columns: minmax(120px, 210px) minmax(0, 1fr) 70px; gap: 10px; align-items: center; }
+.hyd-row .hl { font: 500 13px/1.2 var(--f-body); min-width: 0; }
+.hyd-row .hl small { display: block; font: 400 11px/1.2 var(--f-body); color: var(--muted); }
+.hyd-row .hb { height: 10px; background: var(--sunk); border-radius: 3px; overflow: hidden; }
+.hyd-row .hb i { display: block; height: 100%; border-radius: 3px; }
+.hyd-row .hv { font: 500 12px/1 var(--f-mono); text-align: right; font-variant-numeric: tabular-nums; }
+.hyd-note, .hyd-call { margin: 10px 0 0; font: 400 13px/1.45 var(--f-body); color: var(--muted); max-width: 80ch; }
+.hyd-call { color: var(--ink); }
+@media (max-width: 480px) { .hyd-row { grid-template-columns: minmax(0, 1fr) 64px; } .hyd-row .hb { grid-column: 1 / -1; grid-row: 2; } }
+.sharebox { position: sticky; bottom: 64px; z-index: 6; background: var(--surface); border: 1px solid var(--accent); border-radius: var(--r); padding: 8px 12px; font: 500 13px/1.4 var(--f-body); }
+.sharebox input { width: 100%; margin-top: 4px; font: 400 12px var(--f-mono); color: var(--ink); background: var(--sunk); border: 1px solid var(--line); border-radius: 4px; padding: 5px 6px; }
 .seg { display: flex; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
 .seg button { flex: 1; border: 0; background: var(--surface); color: var(--ink); font: 500 13px var(--f-body); padding: 7px 6px; cursor: pointer; }
 .seg button + button { border-left: 1px solid var(--line); }
@@ -142,7 +156,7 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
   const LAP = [[12, 22, 5], [6, 28, 4], [20, 18, 7], [8, 25, 5], [10, 30, 4], [9, 20, 10]]; // wot s, corner m/s, off s
 
   const DEFAULTS = {
-    hp: 290, wot: 65, speed: 1.0, tAir: 30, minutes: 20, tStart: 70,
+    hp: 290, wot: 65, vTrack: 141, tAir: 30, minutes: 20, tStart: 70,   // vTrack = lap average speed km/h
     duct: 50,            // 0 none .. 100 perfect -> face velocity = (0.10 + 0.30*duct/100) * car speed
     core: 42,            // radiator core depth mm (Miata frame face 560x340)
     bypass: 28,          // restrictor bore mm; 28 = open (stock), 0 = blocked
@@ -156,20 +170,27 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
     fc: 0.70, fOil: 0.22,
   };
 
-  function lapProfile(o, dt) {
+  // Lap: six straights. All speeds (corners, top-speed asymptote, start) scale by f; f is solved so the
+  // lap average matches vTrack (f = 1 -> ~141 km/h fast circuit, f ~ 0.4 -> ~60 km/h tight track).
+  function lapAt(o, dt, f) {
     const th = [], vs = [], rs = [];
     const sw = (o.wot / 100) / 0.65, so = (1 - o.wot / 100) / 0.35;
-    const a0 = 5 * (o.hp / 290) ** 0.6, vmax = 65 * o.speed;
-    let v = 22 * o.speed;
+    const a0 = 5 * (o.hp / 290) ** 0.6, vmax = 65 * f;
+    let v = 22 * f, acc = 0;
     for (const [w, vc, off] of LAP) {
       for (let i = 0, n = Math.round(w * sw / dt); i < n; i++) {
-        v += dt * a0 * (1 - (v / vmax) ** 2); th.push(1); vs.push(v); rs.push(rpmFromV(v));
+        v += dt * a0 * (1 - (v / vmax) ** 2); th.push(1); vs.push(v); rs.push(rpmFromV(v)); acc += v;
       }
       for (let i = 0, n = Math.round(off * so / dt); i < n; i++) {
-        v = Math.max(vc * o.speed, v - 9 * dt); th.push(0); vs.push(v); rs.push(rpmFromV(v));
+        v = Math.max(vc * f, v - 9 * dt); th.push(0); vs.push(v); rs.push(rpmFromV(v)); acc += v;
       }
     }
-    return { th, vs, rs };
+    return { th, vs, rs, avg: acc / vs.length * 3.6 };
+  }
+  function lapProfile(o, dt) {
+    let f = o.vTrack / 141, L = lapAt(o, dt, f);
+    for (let k = 0; k < 4 && Math.abs(L.avg - o.vTrack) > 0.5; k++) { f *= o.vTrack / L.avg; L = lapAt(o, dt, f); }
+    return L;
   }
 
   function run(opts) {
@@ -184,7 +205,7 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
       p0: 150, c_pump: 4.0, k_eng: 4.44,
       k_rad_fixed: 2.4 + kK(3.0, 38) + kK(0.3, 32),
       k_bypass: kK(2.5, 28), k_heater: kK(12, 16),
-      cdA_full: 0.6 * 960e-6, cdA_jig: 0.6 * area(2),
+      cdA_full: 0.6 * Math.PI * 0.034 * 0.010, cdA_jig: 0.6 * area(2),   // ~34 mm valve, 10 mm lift (Toyota spec: >=10 mm at 95C)
       m_metal_cp: 80 * 900, C_oil: 6 * 0.85 * 2100, hA_oil_cool: 800, hA_housing: 15,
       V_eng: 5.5, V_up: 0.8, V_rad: 2.4, V_low: 0.8, V_bp: 0.2, V_mix: 0.3,
       hA_j: 4000, Qj: 3.0, hA_j_min: 800,
@@ -217,6 +238,14 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
     const log = { t: [], ect: [], oil: [], metal: [], radIn: [], radOut: [], mix: [], lift: [],
       Qr: [], Qb: [], Qh: [], qIn: [], qRad: [], qOc: [], v: [], tPre: [] };
     let qRad = 0, qOc = 0, Tpre = o.tAir;
+    const net = (s, kR) => {   // flow network at pump speed s (=rpm/6000) for radiator-path k
+      const sr = 1 / Math.sqrt(kR), sb = kBp ? 1 / Math.sqrt(kBp) : 0, sh = kH ? 1 / Math.sqrt(kH) : 0;
+      const sum = sr + sb + sh, Q = s * Math.sqrt(P.p0 / (P.c_pump + P.k_eng + 1 / sum ** 2));
+      return { Q, Qr: Q * sr / sum, Qb: Q * sb / sum, Qh: Q * sh / sum };
+    };
+    const kStatFull = kOrif(P.cdA_jig + P.cdA_full), kRestr = o.bypass > 0 ? kRestrictor(o.bypass) : 0;
+    const iWin = Math.max(0, steps - Math.round(Math.min(300, o.minutes * 15) / dt));
+    const H = { n: 0, s: 0, pump: 0, eng: 0, core: 0, hose: 0, stat: 0, bp: 0, restr: 0, heater: 0, Q: 0, Qr: 0, lift: 0 };
     for (let i = 0; i < steps; i++) {
       const j = i % nlap, thr = th[j], v = vs[j], rpm = rs[j];
       const s = rpm * o.pulley / 6000;
@@ -225,10 +254,13 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
         x = Math.min(1, Math.max(0, (Tsense - o.statOpen) / (statFull - o.statOpen)));
         kR += kOrif(P.cdA_jig + x * P.cdA_full);
       }
-      const sr = 1 / Math.sqrt(kR), sb = kBp ? 1 / Math.sqrt(kBp) : 0, sh = kH ? 1 / Math.sqrt(kH) : 0;
-      const sum = sr + sb + sh, kPar = 1 / sum ** 2;
-      const Q = s * Math.sqrt(P.p0 / (P.c_pump + P.k_eng + kPar));
-      const Qr = Q * sr / sum, Qb = Q * sb / sum, Qh = Q * sh / sum;
+      const { Q, Qr, Qb, Qh } = net(s, kR);
+      if (i >= iWin) {   // pressure-drop bookkeeping over the last 5 min (kPa)
+        H.n++; H.s += s; H.Q += Q; H.Qr += Qr; H.lift += x;
+        H.pump += P.p0 * s * s - P.c_pump * Q * Q; H.eng += P.k_eng * Q * Q;
+        H.core += 2.4 * Qr * Qr; H.hose += (P.k_rad_fixed - 2.4) * Qr * Qr; H.stat += (kR - P.k_rad_fixed) * Qr * Qr;
+        H.bp += P.k_bypass * Qb * Qb; H.restr += kRestr * Qb * Qb; H.heater += kH ? kH * Qh * Qh : 0;
+      }
       const mr = Qr * RHO / 1000, mb = Qb * RHO / 1000, mh = Qh * RHO / 1000, m = Q * RHO / 1000;
 
       const qIn = thr ? o.fc * torqueWot(rpm) * (o.hp / 290) * rpm * 2 * Math.PI / 60 : P.q_off;
@@ -298,6 +330,13 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
       vAvg: log.v.reduce((p, c) => p + c, 0) / n, vMax: Math.max(...log.v),
       tBoil: boilIdx >= 0 ? log.t[boilIdx] : null, T_boil, ductF,
     };
+    // hydraulics summary, last 5 min averages; plus what a fully open thermostat costs at the same pump speed
+    const m_ = k => H[k] / H.n, sBar = m_('s');
+    const withStat = net(sBar, P.k_rad_fixed + kStatFull), noStat = net(sBar, P.k_rad_fixed);
+    sum.hyd = { pump: m_('pump'), eng: m_('eng'), core: m_('core'), hose: m_('hose'), stat: m_('stat'), bp: m_('bp'),
+      restr: m_('restr'), heater: m_('heater'), Q: m_('Q') * 60, Qr: m_('Qr') * 60, lift: m_('lift') * 100, rpm: sBar * 6000 / o.pulley,
+      statOpen: { k: kStatFull, kRadPath: P.k_rad_fixed + kStatFull, share: kStatFull / (P.k_rad_fixed + kStatFull),
+        dp: kStatFull * withStat.Qr ** 2, QrWith: withStat.Qr * 60, QrWithout: noStat.Qr * 60 } };
     return { opts: o, log, sum };
   }
   root.UZSim = { run, DEFAULTS, kRestrictor };
@@ -328,7 +367,7 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
   const LAP = [[12, 22, 5], [6, 28, 4], [20, 18, 7], [8, 25, 5], [10, 30, 4], [9, 20, 10]]; // wot s, corner m/s, off s
 
   const DEFAULTS = {
-    hp: 290, wot: 65, speed: 1.0, tAir: 30, minutes: 20, tStart: 70,
+    hp: 290, wot: 65, vTrack: 141, tAir: 30, minutes: 20, tStart: 70,   // vTrack = lap average speed km/h
     duct: 50,            // 0 none .. 100 perfect -> face velocity = (0.10 + 0.30*duct/100) * car speed
     core: 42,            // radiator core depth mm (Miata frame face 560x340)
     bypass: 28,          // restrictor bore mm; 28 = open (stock), 0 = blocked
@@ -342,20 +381,27 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
     fc: 0.70, fOil: 0.22,
   };
 
-  function lapProfile(o, dt) {
+  // Lap: six straights. All speeds (corners, top-speed asymptote, start) scale by f; f is solved so the
+  // lap average matches vTrack (f = 1 -> ~141 km/h fast circuit, f ~ 0.4 -> ~60 km/h tight track).
+  function lapAt(o, dt, f) {
     const th = [], vs = [], rs = [];
     const sw = (o.wot / 100) / 0.65, so = (1 - o.wot / 100) / 0.35;
-    const a0 = 5 * (o.hp / 290) ** 0.6, vmax = 65 * o.speed;
-    let v = 22 * o.speed;
+    const a0 = 5 * (o.hp / 290) ** 0.6, vmax = 65 * f;
+    let v = 22 * f, acc = 0;
     for (const [w, vc, off] of LAP) {
       for (let i = 0, n = Math.round(w * sw / dt); i < n; i++) {
-        v += dt * a0 * (1 - (v / vmax) ** 2); th.push(1); vs.push(v); rs.push(rpmFromV(v));
+        v += dt * a0 * (1 - (v / vmax) ** 2); th.push(1); vs.push(v); rs.push(rpmFromV(v)); acc += v;
       }
       for (let i = 0, n = Math.round(off * so / dt); i < n; i++) {
-        v = Math.max(vc * o.speed, v - 9 * dt); th.push(0); vs.push(v); rs.push(rpmFromV(v));
+        v = Math.max(vc * f, v - 9 * dt); th.push(0); vs.push(v); rs.push(rpmFromV(v)); acc += v;
       }
     }
-    return { th, vs, rs };
+    return { th, vs, rs, avg: acc / vs.length * 3.6 };
+  }
+  function lapProfile(o, dt) {
+    let f = o.vTrack / 141, L = lapAt(o, dt, f);
+    for (let k = 0; k < 4 && Math.abs(L.avg - o.vTrack) > 0.5; k++) { f *= o.vTrack / L.avg; L = lapAt(o, dt, f); }
+    return L;
   }
 
   function run(opts) {
@@ -370,7 +416,7 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
       p0: 150, c_pump: 4.0, k_eng: 4.44,
       k_rad_fixed: 2.4 + kK(3.0, 38) + kK(0.3, 32),
       k_bypass: kK(2.5, 28), k_heater: kK(12, 16),
-      cdA_full: 0.6 * 960e-6, cdA_jig: 0.6 * area(2),
+      cdA_full: 0.6 * Math.PI * 0.034 * 0.010, cdA_jig: 0.6 * area(2),   // ~34 mm valve, 10 mm lift (Toyota spec: >=10 mm at 95C)
       m_metal_cp: 80 * 900, C_oil: 6 * 0.85 * 2100, hA_oil_cool: 800, hA_housing: 15,
       V_eng: 5.5, V_up: 0.8, V_rad: 2.4, V_low: 0.8, V_bp: 0.2, V_mix: 0.3,
       hA_j: 4000, Qj: 3.0, hA_j_min: 800,
@@ -403,6 +449,14 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
     const log = { t: [], ect: [], oil: [], metal: [], radIn: [], radOut: [], mix: [], lift: [],
       Qr: [], Qb: [], Qh: [], qIn: [], qRad: [], qOc: [], v: [], tPre: [] };
     let qRad = 0, qOc = 0, Tpre = o.tAir;
+    const net = (s, kR) => {   // flow network at pump speed s (=rpm/6000) for radiator-path k
+      const sr = 1 / Math.sqrt(kR), sb = kBp ? 1 / Math.sqrt(kBp) : 0, sh = kH ? 1 / Math.sqrt(kH) : 0;
+      const sum = sr + sb + sh, Q = s * Math.sqrt(P.p0 / (P.c_pump + P.k_eng + 1 / sum ** 2));
+      return { Q, Qr: Q * sr / sum, Qb: Q * sb / sum, Qh: Q * sh / sum };
+    };
+    const kStatFull = kOrif(P.cdA_jig + P.cdA_full), kRestr = o.bypass > 0 ? kRestrictor(o.bypass) : 0;
+    const iWin = Math.max(0, steps - Math.round(Math.min(300, o.minutes * 15) / dt));
+    const H = { n: 0, s: 0, pump: 0, eng: 0, core: 0, hose: 0, stat: 0, bp: 0, restr: 0, heater: 0, Q: 0, Qr: 0, lift: 0 };
     for (let i = 0; i < steps; i++) {
       const j = i % nlap, thr = th[j], v = vs[j], rpm = rs[j];
       const s = rpm * o.pulley / 6000;
@@ -411,10 +465,13 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
         x = Math.min(1, Math.max(0, (Tsense - o.statOpen) / (statFull - o.statOpen)));
         kR += kOrif(P.cdA_jig + x * P.cdA_full);
       }
-      const sr = 1 / Math.sqrt(kR), sb = kBp ? 1 / Math.sqrt(kBp) : 0, sh = kH ? 1 / Math.sqrt(kH) : 0;
-      const sum = sr + sb + sh, kPar = 1 / sum ** 2;
-      const Q = s * Math.sqrt(P.p0 / (P.c_pump + P.k_eng + kPar));
-      const Qr = Q * sr / sum, Qb = Q * sb / sum, Qh = Q * sh / sum;
+      const { Q, Qr, Qb, Qh } = net(s, kR);
+      if (i >= iWin) {   // pressure-drop bookkeeping over the last 5 min (kPa)
+        H.n++; H.s += s; H.Q += Q; H.Qr += Qr; H.lift += x;
+        H.pump += P.p0 * s * s - P.c_pump * Q * Q; H.eng += P.k_eng * Q * Q;
+        H.core += 2.4 * Qr * Qr; H.hose += (P.k_rad_fixed - 2.4) * Qr * Qr; H.stat += (kR - P.k_rad_fixed) * Qr * Qr;
+        H.bp += P.k_bypass * Qb * Qb; H.restr += kRestr * Qb * Qb; H.heater += kH ? kH * Qh * Qh : 0;
+      }
       const mr = Qr * RHO / 1000, mb = Qb * RHO / 1000, mh = Qh * RHO / 1000, m = Q * RHO / 1000;
 
       const qIn = thr ? o.fc * torqueWot(rpm) * (o.hp / 290) * rpm * 2 * Math.PI / 60 : P.q_off;
@@ -484,6 +541,13 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
       vAvg: log.v.reduce((p, c) => p + c, 0) / n, vMax: Math.max(...log.v),
       tBoil: boilIdx >= 0 ? log.t[boilIdx] : null, T_boil, ductF,
     };
+    // hydraulics summary, last 5 min averages; plus what a fully open thermostat costs at the same pump speed
+    const m_ = k => H[k] / H.n, sBar = m_('s');
+    const withStat = net(sBar, P.k_rad_fixed + kStatFull), noStat = net(sBar, P.k_rad_fixed);
+    sum.hyd = { pump: m_('pump'), eng: m_('eng'), core: m_('core'), hose: m_('hose'), stat: m_('stat'), bp: m_('bp'),
+      restr: m_('restr'), heater: m_('heater'), Q: m_('Q') * 60, Qr: m_('Qr') * 60, lift: m_('lift') * 100, rpm: sBar * 6000 / o.pulley,
+      statOpen: { k: kStatFull, kRadPath: P.k_rad_fixed + kStatFull, share: kStatFull / (P.k_rad_fixed + kStatFull),
+        dp: kStatFull * withStat.Qr ** 2, QrWith: withStat.Qr * 60, QrWithout: noStat.Qr * 60 } };
     return { opts: o, log, sum };
   }
   root.UZSim = { run, DEFAULTS, kRestrictor };
@@ -538,6 +602,7 @@ function describe(o) {
   if (o.tAir !== D.tAir) p.push(`${o.tAir}°C air`);
   if (o.hp !== D.hp) p.push(`${o.hp} hp`);
   if (o.wot !== D.wot) p.push(`${o.wot}% WOT`);
+  if (o.vTrack !== D.vTrack) p.push(`track avg ${o.vTrack} km/h`);
   if (o.pulley !== D.pulley) p.push(`pump ×${o.pulley}`);
   if (o.fc !== D.fc) p.push(`heat ${o.fc}`);
   return p.join(' · ');
@@ -599,8 +664,65 @@ function Chart({ title, series, x, yUnit, refs = [], bands = [], yMin, yMax, hei
 const lapAvg = (a, n = 100) => { const out = new Array(a.length); let acc = 0; const q = [];
   for (let i = 0; i < a.length; i++) { acc += a[i]; q.push(a[i]); if (q.length > n) acc -= q.shift(); out[i] = acc / q.length; } return out; };
 
+function Hydraulics({ h, o }) {
+  const radPath = h.core + h.hose + h.stat;
+  const rows = [
+    ['Pump head', h.pump, 'var(--ink)', 'what the pump makes at this flow'],
+    ['Block + heads', h.eng, 'var(--muted)', 'in series with everything'],
+    ['Radiator core', h.core, 'var(--cold)', 'radiator path'],
+    ['Hoses + 32 mm necks', h.hose, 'var(--cold)', 'radiator path'],
+    [o.stat ? `Thermostat (${h.lift.toFixed(0)}% open)` : 'Thermostat (removed)', h.stat, 'var(--accent)', 'radiator path'],
+    ...(o.bypass > 0 ? [['Bypass passage 28 mm', h.bp, 'var(--warn)', 'bypass path'],
+      ...(o.bypass < 28 ? [[`Restrictor ${o.bypass} mm`, h.restr, 'var(--warn)', 'bypass path']] : [])] : []),
+    ...(o.heater ? [['Heater loop', h.heater, 'var(--violet)', 'heater path']] : []),
+  ];
+  const mx = Math.max(...rows.map(r => r[1]), 1), so = h.statOpen;
+  const gain = 100 * (so.QrWithout / so.QrWith - 1);
+  return html`<div class="panel hyd">
+    <h3>Pressure drop, last 5 min average</h3>
+    <div class="hyd-rows">${rows.map(([l, v, c, n]) => html`<div class="hyd-row">
+      <span class="hl">${l}<small>${n}</small></span>
+      <span class="hb"><i style=${{ width: (100 * v / mx).toFixed(1) + '%', background: c }}></i></span>
+      <span class="hv">${v.toFixed(1)} kPa</span></div>`)}</div>
+    <p class="hyd-note">Parallel paths share one pressure drop: radiator path ${radPath.toFixed(1)} kPa${o.bypass > 0 ? `, bypass ${(h.bp + h.restr).toFixed(1)}` : ''}${o.heater ? `, heater ${h.heater.toFixed(1)}` : ''}.
+      Pump ${h.Q.toFixed(0)} L/min at ~${h.rpm.toFixed(0)} rpm average.</p>
+    <p class="hyd-call"><b>A new, fully open thermostat</b> (34 mm valve, 10 mm lift) is ${(100 * so.share).toFixed(0)}% of the radiator path's resistance:
+      ${so.dp.toFixed(1)} kPa here. Without it the radiator would get ${so.QrWithout.toFixed(0)} instead of ${so.QrWith.toFixed(0)} L/min (+${gain.toFixed(0)}%).
+      Toggle "Thermostat fitted" off to see what that does to temperature.</p>
+  </div>`;
+}
+
+// Settings <-> URL query (?bypass=14&core=60...). Only values that differ from the defaults go in the link.
+function fromQuery() {
+  const out = { ...D };
+  try {
+    const q = new URLSearchParams(location.search);
+    for (const [k, v] of q) {
+      if (!(k in D)) continue;
+      const d = D[k];
+      if (typeof d === 'boolean') out[k] = v === '1' || v === 'true';
+      else if (typeof d === 'number') { const n = parseFloat(v); if (Number.isFinite(n)) out[k] = n; }
+      else out[k] = v;
+    }
+  } catch (e) {}
+  return out;
+}
+function toQuery(o) {
+  const q = new URLSearchParams();
+  for (const k of Object.keys(D)) if (o[k] !== D[k]) q.set(k, typeof D[k] === 'boolean' ? (o[k] ? '1' : '0') : String(o[k]));
+  const str = q.toString();
+  return location.origin + location.pathname + (str ? '?' + str : '');
+}
+
 function App() {
-  const [o, setO] = useState({ ...D });
+  const [o, setO] = useState(fromQuery);
+  const [shared, setShared] = useState('');
+  useEffect(() => { try { history.replaceState(null, '', toQuery(o)); } catch (e) {} }, [o]);
+  const share = () => {
+    const url = toQuery(o);
+    const done = () => { setShared('Link copied'); setTimeout(() => setShared(''), 2500); };
+    try { navigator.clipboard.writeText(url).then(done, () => setShared(url)); } catch (e) { setShared(url); }
+  };
   const [cur, setCur] = useState(null);
   const [band, setBand] = useState(null);
   const [pinned, setPinned] = useState([]);
@@ -654,7 +776,7 @@ function App() {
 
   return html`<div class="wrap">
     <header>
-      <h1>3UZ Miata Cooling Lab<small>1D loop model · 3UZ-FE NA · IL Motorsport frame radiator · fast track, avg ≈141 km/h</small></h1>
+      <h1>3UZ Miata Cooling Lab<small>1D loop model · 3UZ-FE NA · IL Motorsport frame radiator · track avg ${o.vTrack} km/h</small></h1>
     </header>
     <div class="grid">
       <aside class="rail">
@@ -711,8 +833,8 @@ function App() {
         <${Group} title="Engine and track" open=${false}>
           <${Slider} id="hp" label="Engine power" value=${o.hp} min=${200} max=${450} step=${10} unit=" hp" hint="3UZ-FE stock: 290 hp" onChange=${set('hp')} />
           <${Slider} id="wot" label="Full throttle share of lap" value=${o.wot} min=${30} max=${85} unit="%" onChange=${set('wot')} />
-          <${Slider} id="speed" label="Track speed" value=${o.speed} min=${0.7} max=${1.3} step=${0.05} fmt=${v => '×' + v.toFixed(2)} ends=${['tight', 'faster']} onChange=${set('speed')}
-            hint=${'×1.00 = fast circuit, avg ≈141 km/h, top ≈225 km/h' + (s ? ` · last run: avg ${s.vAvg.toFixed(0)}, top ${s.vMax.toFixed(0)} km/h` : '') + '. Slower tracks mean less air through the radiator.'} />
+          <${Slider} id="vTrack" label="Track average speed" value=${o.vTrack} min=${50} max=${160} step=${5} unit=" km/h" ends=${['tight, 50', 'fast, 160']} onChange=${set('vTrack')}
+            hint=${(s ? `Top speed ≈${s.vMax.toFixed(0)} km/h. ` : '') + '141 = fast circuit, 60 = tight club or kart-style track. Slow tracks put less air through the radiator; they usually have less full throttle too, so lower that as well.'} />
           <${Slider} id="minutes" label="Session length" value=${o.minutes} min=${5} max=${40} unit=" min" onChange=${set('minutes')} />
           <${Slider} id="tStart" label="Start coolant temp" value=${o.tStart} min=${20} max=${95} unit="°C" onChange=${set('tStart')} />
         <//>
@@ -721,8 +843,11 @@ function App() {
             hint="Fitted to forum track data from turbo and supercharged Miatas: 0.70. Absolute temps ±20°C, comparisons are solid." onChange=${set('fc')} />
           <${Slider} id="fOil" label="Share of that heat into oil" value=${o.fOil} min=${0.1} max=${0.35} step=${0.01} fmt=${v => Math.round(v * 100) + '%'} onChange=${set('fOil')} />
         <//>
+        ${shared && html`<div class="sharebox" role="status">${shared === 'Link copied' ? 'Link with these settings copied.' :
+          html`Copy this link: <input id="shareUrl" readonly value=${shared} onFocus=${e => e.target.select()} />`}</div>`}
         <div class="actions">
           <button class="btn primary" disabled=${!cur} onClick=${pin}>Keep to compare</button>
+          <button class="btn ghost reset" onClick=${share} aria-label="Copy a link with these settings">Share</button>
           <button class="btn ghost reset" onClick=${() => setO({ ...D })} aria-label="Reset all settings to defaults">Reset</button>
         </div>
       </aside>
@@ -763,9 +888,10 @@ function App() {
           <div class="wide"><${Chart} title="Heat balance, one-lap average" x=${cur.log.t} yUnit="kW" yMin=${0} height=${190}
             series=${[{ y: lapAvg(cur.log.qIn), color: 'var(--hot)', w: 2, label: 'engine heat in' }, { y: lapAvg(cur.log.qRad), color: 'var(--cold)', w: 2, label: 'radiator out' },
               ...(s.qOc > 0.05 ? [{ y: lapAvg(cur.log.qOc), color: 'var(--oil)', w: 2, label: 'oil cooler out' }] : [])]} /></div>
+          <div class="wide"><${Hydraulics} h=${s.hyd} o=${cur.opts} /></div>
         </div>
         <div class="panel notes">
-          <p><b>How to read this.</b> Every change re-runs a 20 min session on a fast circuit: a 100 s lap with six straights, average ≈141 km/h, top ≈225 km/h, starting with the thermostat closed. Use Track speed for slower tracks. When the sliders rest it also re-runs with engine heat ±0.1, which gives the range under the coolant number. Absolute temperatures are a calibrated estimate (±20°C, no 3UZ logs yet). Differences between setups are the reliable output.</p>
+          <p><b>How to read this.</b> Every change re-runs a 20 min session: a lap with six straights at the chosen average speed (default 141 km/h, a fast circuit; down to 50 km/h for tight tracks), starting with the thermostat closed. When the sliders rest it also re-runs with engine heat ±0.1, which gives the range under the coolant number. Absolute temperatures are a calibrated estimate (±20°C, no 3UZ logs yet). Differences between setups are the reliable output.</p>
           <p>Model: pump curve, block, radiator, 38→32 mm necks, bypass and restrictor solved as a flow network every 20 ms. Wax thermostat with a 15 s lag on the pump-inlet side. Radiator cells with air as the limiting side. Separate oil and metal nodes. Readings above the boiling point are not physical: the coolant would boil over first.</p>
           <p>Open source: <a href="https://github.com/strndy/uz-miata-cooling" target="_blank" rel="noopener" class="src">github.com/strndy/uz-miata-cooling</a>. The README explains every equation and the calibration sources.</p>
         </div>`}

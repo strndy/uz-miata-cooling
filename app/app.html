@@ -61,6 +61,20 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
 .btn.reset { flex: 0 0 auto; padding-inline: 18px; }
 .live { font: 500 11px/1 var(--f-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .live.on { color: var(--warn); }
+.hyd { padding: 12px 16px 14px; }
+.hyd h3 { margin: 0 0 10px; font: 600 14px/1.2 var(--f-display); letter-spacing: .04em; text-transform: uppercase; }
+.hyd-rows { display: flex; flex-direction: column; gap: 6px; }
+.hyd-row { display: grid; grid-template-columns: minmax(120px, 210px) minmax(0, 1fr) 70px; gap: 10px; align-items: center; }
+.hyd-row .hl { font: 500 13px/1.2 var(--f-body); min-width: 0; }
+.hyd-row .hl small { display: block; font: 400 11px/1.2 var(--f-body); color: var(--muted); }
+.hyd-row .hb { height: 10px; background: var(--sunk); border-radius: 3px; overflow: hidden; }
+.hyd-row .hb i { display: block; height: 100%; border-radius: 3px; }
+.hyd-row .hv { font: 500 12px/1 var(--f-mono); text-align: right; font-variant-numeric: tabular-nums; }
+.hyd-note, .hyd-call { margin: 10px 0 0; font: 400 13px/1.45 var(--f-body); color: var(--muted); max-width: 80ch; }
+.hyd-call { color: var(--ink); }
+@media (max-width: 480px) { .hyd-row { grid-template-columns: minmax(0, 1fr) 64px; } .hyd-row .hb { grid-column: 1 / -1; grid-row: 2; } }
+.sharebox { position: sticky; bottom: 64px; z-index: 6; background: var(--surface); border: 1px solid var(--accent); border-radius: var(--r); padding: 8px 12px; font: 500 13px/1.4 var(--f-body); }
+.sharebox input { width: 100%; margin-top: 4px; font: 400 12px var(--f-mono); color: var(--ink); background: var(--sunk); border: 1px solid var(--line); border-radius: 4px; padding: 5px 6px; }
 .seg { display: flex; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
 .seg button { flex: 1; border: 0; background: var(--surface); color: var(--ink); font: 500 13px var(--f-body); padding: 7px 6px; cursor: pointer; }
 .seg button + button { border-left: 1px solid var(--line); }
@@ -162,6 +176,7 @@ function describe(o) {
   if (o.tAir !== D.tAir) p.push(`${o.tAir}°C air`);
   if (o.hp !== D.hp) p.push(`${o.hp} hp`);
   if (o.wot !== D.wot) p.push(`${o.wot}% WOT`);
+  if (o.vTrack !== D.vTrack) p.push(`track avg ${o.vTrack} km/h`);
   if (o.pulley !== D.pulley) p.push(`pump ×${o.pulley}`);
   if (o.fc !== D.fc) p.push(`heat ${o.fc}`);
   return p.join(' · ');
@@ -223,8 +238,65 @@ function Chart({ title, series, x, yUnit, refs = [], bands = [], yMin, yMax, hei
 const lapAvg = (a, n = 100) => { const out = new Array(a.length); let acc = 0; const q = [];
   for (let i = 0; i < a.length; i++) { acc += a[i]; q.push(a[i]); if (q.length > n) acc -= q.shift(); out[i] = acc / q.length; } return out; };
 
+function Hydraulics({ h, o }) {
+  const radPath = h.core + h.hose + h.stat;
+  const rows = [
+    ['Pump head', h.pump, 'var(--ink)', 'what the pump makes at this flow'],
+    ['Block + heads', h.eng, 'var(--muted)', 'in series with everything'],
+    ['Radiator core', h.core, 'var(--cold)', 'radiator path'],
+    ['Hoses + 32 mm necks', h.hose, 'var(--cold)', 'radiator path'],
+    [o.stat ? `Thermostat (${h.lift.toFixed(0)}% open)` : 'Thermostat (removed)', h.stat, 'var(--accent)', 'radiator path'],
+    ...(o.bypass > 0 ? [['Bypass passage 28 mm', h.bp, 'var(--warn)', 'bypass path'],
+      ...(o.bypass < 28 ? [[`Restrictor ${o.bypass} mm`, h.restr, 'var(--warn)', 'bypass path']] : [])] : []),
+    ...(o.heater ? [['Heater loop', h.heater, 'var(--violet)', 'heater path']] : []),
+  ];
+  const mx = Math.max(...rows.map(r => r[1]), 1), so = h.statOpen;
+  const gain = 100 * (so.QrWithout / so.QrWith - 1);
+  return html`<div class="panel hyd">
+    <h3>Pressure drop, last 5 min average</h3>
+    <div class="hyd-rows">${rows.map(([l, v, c, n]) => html`<div class="hyd-row">
+      <span class="hl">${l}<small>${n}</small></span>
+      <span class="hb"><i style=${{ width: (100 * v / mx).toFixed(1) + '%', background: c }}></i></span>
+      <span class="hv">${v.toFixed(1)} kPa</span></div>`)}</div>
+    <p class="hyd-note">Parallel paths share one pressure drop: radiator path ${radPath.toFixed(1)} kPa${o.bypass > 0 ? `, bypass ${(h.bp + h.restr).toFixed(1)}` : ''}${o.heater ? `, heater ${h.heater.toFixed(1)}` : ''}.
+      Pump ${h.Q.toFixed(0)} L/min at ~${h.rpm.toFixed(0)} rpm average.</p>
+    <p class="hyd-call"><b>A new, fully open thermostat</b> (34 mm valve, 10 mm lift) is ${(100 * so.share).toFixed(0)}% of the radiator path's resistance:
+      ${so.dp.toFixed(1)} kPa here. Without it the radiator would get ${so.QrWithout.toFixed(0)} instead of ${so.QrWith.toFixed(0)} L/min (+${gain.toFixed(0)}%).
+      Toggle "Thermostat fitted" off to see what that does to temperature.</p>
+  </div>`;
+}
+
+// Settings <-> URL query (?bypass=14&core=60...). Only values that differ from the defaults go in the link.
+function fromQuery() {
+  const out = { ...D };
+  try {
+    const q = new URLSearchParams(location.search);
+    for (const [k, v] of q) {
+      if (!(k in D)) continue;
+      const d = D[k];
+      if (typeof d === 'boolean') out[k] = v === '1' || v === 'true';
+      else if (typeof d === 'number') { const n = parseFloat(v); if (Number.isFinite(n)) out[k] = n; }
+      else out[k] = v;
+    }
+  } catch (e) {}
+  return out;
+}
+function toQuery(o) {
+  const q = new URLSearchParams();
+  for (const k of Object.keys(D)) if (o[k] !== D[k]) q.set(k, typeof D[k] === 'boolean' ? (o[k] ? '1' : '0') : String(o[k]));
+  const str = q.toString();
+  return location.origin + location.pathname + (str ? '?' + str : '');
+}
+
 function App() {
-  const [o, setO] = useState({ ...D });
+  const [o, setO] = useState(fromQuery);
+  const [shared, setShared] = useState('');
+  useEffect(() => { try { history.replaceState(null, '', toQuery(o)); } catch (e) {} }, [o]);
+  const share = () => {
+    const url = toQuery(o);
+    const done = () => { setShared('Link copied'); setTimeout(() => setShared(''), 2500); };
+    try { navigator.clipboard.writeText(url).then(done, () => setShared(url)); } catch (e) { setShared(url); }
+  };
   const [cur, setCur] = useState(null);
   const [band, setBand] = useState(null);
   const [pinned, setPinned] = useState([]);
@@ -278,7 +350,7 @@ function App() {
 
   return html`<div class="wrap">
     <header>
-      <h1>3UZ Miata Cooling Lab<small>1D loop model · 3UZ-FE NA · IL Motorsport frame radiator · fast track, avg ≈141 km/h</small></h1>
+      <h1>3UZ Miata Cooling Lab<small>1D loop model · 3UZ-FE NA · IL Motorsport frame radiator · track avg ${o.vTrack} km/h</small></h1>
     </header>
     <div class="grid">
       <aside class="rail">
@@ -335,8 +407,8 @@ function App() {
         <${Group} title="Engine and track" open=${false}>
           <${Slider} id="hp" label="Engine power" value=${o.hp} min=${200} max=${450} step=${10} unit=" hp" hint="3UZ-FE stock: 290 hp" onChange=${set('hp')} />
           <${Slider} id="wot" label="Full throttle share of lap" value=${o.wot} min=${30} max=${85} unit="%" onChange=${set('wot')} />
-          <${Slider} id="speed" label="Track speed" value=${o.speed} min=${0.7} max=${1.3} step=${0.05} fmt=${v => '×' + v.toFixed(2)} ends=${['tight', 'faster']} onChange=${set('speed')}
-            hint=${'×1.00 = fast circuit, avg ≈141 km/h, top ≈225 km/h' + (s ? ` · last run: avg ${s.vAvg.toFixed(0)}, top ${s.vMax.toFixed(0)} km/h` : '') + '. Slower tracks mean less air through the radiator.'} />
+          <${Slider} id="vTrack" label="Track average speed" value=${o.vTrack} min=${50} max=${160} step=${5} unit=" km/h" ends=${['tight, 50', 'fast, 160']} onChange=${set('vTrack')}
+            hint=${(s ? `Top speed ≈${s.vMax.toFixed(0)} km/h. ` : '') + '141 = fast circuit, 60 = tight club or kart-style track. Slow tracks put less air through the radiator; they usually have less full throttle too, so lower that as well.'} />
           <${Slider} id="minutes" label="Session length" value=${o.minutes} min=${5} max=${40} unit=" min" onChange=${set('minutes')} />
           <${Slider} id="tStart" label="Start coolant temp" value=${o.tStart} min=${20} max=${95} unit="°C" onChange=${set('tStart')} />
         <//>
@@ -345,8 +417,11 @@ function App() {
             hint="Fitted to forum track data from turbo and supercharged Miatas: 0.70. Absolute temps ±20°C, comparisons are solid." onChange=${set('fc')} />
           <${Slider} id="fOil" label="Share of that heat into oil" value=${o.fOil} min=${0.1} max=${0.35} step=${0.01} fmt=${v => Math.round(v * 100) + '%'} onChange=${set('fOil')} />
         <//>
+        ${shared && html`<div class="sharebox" role="status">${shared === 'Link copied' ? 'Link with these settings copied.' :
+          html`Copy this link: <input id="shareUrl" readonly value=${shared} onFocus=${e => e.target.select()} />`}</div>`}
         <div class="actions">
           <button class="btn primary" disabled=${!cur} onClick=${pin}>Keep to compare</button>
+          <button class="btn ghost reset" onClick=${share} aria-label="Copy a link with these settings">Share</button>
           <button class="btn ghost reset" onClick=${() => setO({ ...D })} aria-label="Reset all settings to defaults">Reset</button>
         </div>
       </aside>
@@ -387,9 +462,10 @@ function App() {
           <div class="wide"><${Chart} title="Heat balance, one-lap average" x=${cur.log.t} yUnit="kW" yMin=${0} height=${190}
             series=${[{ y: lapAvg(cur.log.qIn), color: 'var(--hot)', w: 2, label: 'engine heat in' }, { y: lapAvg(cur.log.qRad), color: 'var(--cold)', w: 2, label: 'radiator out' },
               ...(s.qOc > 0.05 ? [{ y: lapAvg(cur.log.qOc), color: 'var(--oil)', w: 2, label: 'oil cooler out' }] : [])]} /></div>
+          <div class="wide"><${Hydraulics} h=${s.hyd} o=${cur.opts} /></div>
         </div>
         <div class="panel notes">
-          <p><b>How to read this.</b> Every change re-runs a 20 min session on a fast circuit: a 100 s lap with six straights, average ≈141 km/h, top ≈225 km/h, starting with the thermostat closed. Use Track speed for slower tracks. When the sliders rest it also re-runs with engine heat ±0.1, which gives the range under the coolant number. Absolute temperatures are a calibrated estimate (±20°C, no 3UZ logs yet). Differences between setups are the reliable output.</p>
+          <p><b>How to read this.</b> Every change re-runs a 20 min session: a lap with six straights at the chosen average speed (default 141 km/h, a fast circuit; down to 50 km/h for tight tracks), starting with the thermostat closed. When the sliders rest it also re-runs with engine heat ±0.1, which gives the range under the coolant number. Absolute temperatures are a calibrated estimate (±20°C, no 3UZ logs yet). Differences between setups are the reliable output.</p>
           <p>Model: pump curve, block, radiator, 38→32 mm necks, bypass and restrictor solved as a flow network every 20 ms. Wax thermostat with a 15 s lag on the pump-inlet side. Radiator cells with air as the limiting side. Separate oil and metal nodes. Readings above the boiling point are not physical: the coolant would boil over first.</p>
           <p>Open source: <a href="https://github.com/strndy/uz-miata-cooling" target="_blank" rel="noopener" class="src">github.com/strndy/uz-miata-cooling</a>. The README explains every equation and the calibration sources.</p>
         </div>`}

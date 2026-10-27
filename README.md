@@ -2,13 +2,13 @@
 
 ## ▶ Open the calculator: **https://uz-miata-cooling.onrender.com**
 
-Move any slider and the charts update immediately: each change simulates a full 20-minute session on a **fast circuit (average ≈141 km/h, top ≈225 km/h)** in ~0.2 s. Knobs: restrictor bore, thermostat (on/off, opening temp), heater deleted, pump speed, glycol share, Water Wetter, radiator cap, ducting, radiator thickness, air temp, oil cooler (typical sizes list or custom, thickness, mounting, oil thermostat on/off and opening temp), engine power, full-throttle share, track speed. **Keep to compare** overlays up to 5 runs; **Reset** goes back to the defaults.
+Move any slider and the charts update immediately: each change simulates a full 20-minute session in ~0.2 s, on any track from **tight (50 km/h average) to fast (160 km/h)**. The default is a fast circuit at 141 km/h average, ≈225 km/h top. Knobs: restrictor bore, thermostat (on/off, opening temp), heater deleted, pump speed, glycol share, Water Wetter, radiator cap, ducting, radiator thickness, air temp, oil cooler (typical sizes list or custom, thickness, mounting, oil thermostat on/off and opening temp), engine power, full-throttle share, track average speed. A pressure-drop panel shows where the pump's head goes, including what a fully open thermostat costs. **Keep to compare** overlays up to 5 runs. **Share** copies a link with your settings: only the values you changed go into the URL, e.g. `?bypass=14&core=60&heater=0`. **Reset** goes back to the defaults.
 
 ## Why
 
 UZ V8s (1UZ / 2UZ / 3UZ) swapped into small cars overheat on track. Vendors sell a coolant **bypass restrictor**: a sleeve that narrows the 28 mm bypass in the water inlet housing so more coolant goes through the radiator ([Adapt Lab article](https://adapt-lab.com/2025/07/27/beat-the-heat-why-every-uz-engine-needs-adapt-labs-coolant-bypass-restrictor/)). The article explains the mechanism but shows no test data, and no independent before/after logs could be found.
 
-This project tests that claim with physics for one concrete car: **a stock 3UZ-FE in an NA Miata with a 42 mm aluminium radiator, on a fast track at 30 °C** (average ≈141 km/h; the Track speed slider covers slower circuits, which put less air through the radiator). It asks three questions. Does the restrictor work? What size? And is it the right fix at all compared with ducting, a thicker radiator or an oil cooler?
+This project tests that claim with physics for one concrete car: **a stock 3UZ-FE in an NA Miata with a 42 mm aluminium radiator, on a fast track at 30 °C** (average ≈141 km/h). The track-speed slider goes down to 50 km/h average for tight tracks, which put less air through the radiator. It asks three questions. Does the restrictor work? What size? And is it the right fix at all compared with ducting, a thicker radiator or an oil cooler?
 
 ## How it calculates
 
@@ -32,7 +32,7 @@ Every branch is a quadratic loss, `Δp = k·Q²` (k in kPa/(L/s)²). Pipe and fi
 - **Pump** (mechanical, crank speed × pulley ratio n): `Δp = 150·(n/6000)² − 4.0·Q²` kPa. Shut-off 150 kPa at 6000 rpm.
 - **Engine block + heads:** k = 4.44 (40 kPa at 180 L/min).
 - **Radiator path:** core (15 kPa at 150 L/min) + 38 mm hoses (K≈3) + 38→32→38 mm necks (K≈0.3) + thermostat.
-- **Thermostat:** an orifice with `Cd·A = 0.6·(A_jiggle + lift·A_full)`, A_full ≈ 34 mm valve × 9 mm lift. Lift goes linearly from 0 at the opening temp to 1 at opening + 8 °C. The pellet temperature lags the inlet-housing water with τ = 15 s, and also gets a little heat by conduction from the block (15 W/K).
+- **Thermostat:** an orifice with `Cd·A = 0.6·(A_jiggle + lift·A_full)`, A_full ≈ 34 mm valve × 10 mm lift (Toyota spec for the UZ thermostat: ≥10 mm at 95 °C). Lift goes linearly from 0 at the opening temp to 1 at opening + 8 °C. The pellet temperature lags the inlet-housing water with τ = 15 s, and also gets a little heat by conduction from the block (15 W/K).
 - **Bypass:** 28 mm passage, K≈2.5. The **restrictor** is a sleeve of bore d in the 28 mm bore. Its loss is entry contraction + sudden expansion: `K = 0.5(1−β²)^0.75 + (1−β²)²` (on the sleeve velocity), with `β = d/28`.
 - **Heater core:** 16 mm hoses + core, K≈12. A Miata has no heater valve, so unless the heater is deleted this is a small second bypass (~16–29 L/min).
 
@@ -81,7 +81,7 @@ Plug-flow cells give real transport delays. That's what produces the hot and col
 
 ### 7. Track session
 
-- **Fast circuit:** 100 s lap with six straights, average ≈141 km/h, top ≈225 km/h at the defaults. The Track speed slider scales all speeds (×0.7 = tight club circuit). Full-throttle time (65 % by default) accelerates at `a = 5·(1 − (v/65)²)` m/s², scaled with power. Braking at 9 m/s² down to each corner speed (18–30 m/s).
+- **Track speed:** a lap with six straights. Corner speeds, the top-speed limit and the start speed all scale by one factor, solved so the lap average matches the slider (50–160 km/h). 141 km/h (top ≈225) is a fast circuit; 60 km/h (top ≈86) is a tight club or kart-style track. Slow tracks put less air through the radiator and usually need a lower full-throttle share too. Full-throttle time (65 % by default) accelerates at `a = 5·(1 − (v/65)²)` m/s², scaled with power. Braking at 9 m/s² down to each corner speed (18–30 m/s).
 - **Gearing:** five gears, shifting at 6200 rpm.
 - **Start:** whole loop at the start temperature, thermostat closed.
 - **Boiling point:** `100 + 0.12·glycol% + 20·cap_bar` °C (50/50 at 1.1 bar ≈ 128 °C). Readings above it aren't physical: the coolant would boil over first.
@@ -106,12 +106,12 @@ Default scenario: 3UZ-FE stock (290 hp), stock water pump, stock inlet-side ther
 
 | Setup | Flow through radiator | Coolant at sensor, last 5 min |
 |---|---|---|
-| Stock bypass (28 mm, no restrictor) | 87 L/min (**59 % of the pump flow skips the radiator**: bypass + heater) | 137 °C, boils after ~4.2 min |
-| 18 mm restrictor | 105 L/min | 132 °C, boils after ~5.8 min |
-| 14 mm restrictor | 121 L/min | 129 °C, boils after ~7.6 min |
-| 10 mm restrictor | 138 L/min | 126 °C |
-| Bypass blocked, thermostat fitted, heater flowing | 156 L/min | 124 °C |
-| Bypass blocked, thermostat fitted, **heater deleted** | 65 L/min | **boils in ~68 s** (thermostat never sees hot water) |
+| Stock bypass (28 mm, no restrictor) | 88 L/min (**59 % of the pump flow skips the radiator**: bypass + heater) | 136 °C, boils after ~4.2 min |
+| 18 mm restrictor | 107 L/min | 132 °C, boils after ~5.9 min |
+| 14 mm restrictor | 123 L/min | 128 °C, boils after ~7.6 min |
+| 10 mm restrictor | 139 L/min | 126 °C |
+| Bypass blocked, thermostat fitted, heater flowing | 158 L/min | 124 °C |
+| Bypass blocked, thermostat fitted, **heater deleted** | 66 L/min | **boils in ~68 s** (thermostat never sees hot water) |
 | Delete kit (no thermostat, bypass blocked) | 167 L/min | 123 °C |
 | 60 mm radiator + sealed ducting + 14 mm + oil cooler in its own duct | — | ~93 °C |
 
@@ -119,6 +119,8 @@ Default scenario: 3UZ-FE stock (290 hp), stock water pump, stock inlet-side ther
 - **It doesn't fix a small radiator.** The air side of the radiator is the limit. Ducting (none → sealed) and core thickness (42 → 60 mm) are each worth ~15–17 °C.
 - **Blocking the bypass with the thermostat fitted only works because of the heater loop.** The thermostat sits on the pump inlet and reads the bypass water. With the bypass blocked, the heater core (no valve on a Miata) becomes the only hot flow reaching it, about 29 L/min, which acts like a ~10 mm restrictor. **Delete the heater as well and it boils in about a minute**: the thermostat only sees cold radiator water through its 2 mm hole and opens far too late.
 - **Oil cooler:** stacked in front of the radiator it removes ~13 kW from the oil but pre-heats 20 % of the radiator to ~75 °C, so coolant drops only 3–5 °C. In its own duct, coolant drops 10–15 °C. Without one, oil sits at ~155–165 °C.
+- **A brand-new, fully open thermostat still costs flow.** At 10 mm lift it is ~25 % of the radiator path's resistance: 2.7 kPa on the stock layout, 5 kPa with a 14 mm restrictor. Removing it (bypass kept) raises radiator flow ~9 % (88 → 96 L/min) and is worth only 1–2 °C. The thermostat is a minor loss; the bypass is the big one.
+- **Tight tracks are harder on cooling.** At 60 km/h average the same car runs far hotter, because there's less ram air. Even at 40 % full throttle the stock setup boils (~144 °C). The 60 mm radiator + sealed duct + 14 mm + oil cooler in its own duct still holds ~97 °C there.
 - **Coolant:** pure water + Water Wetter instead of 50/50 is worth ~10 °C on coolant, but the boiling point drops from 128 to 122 °C at a 1.1 bar cap. Water Wetter alone in 50/50 is worth ~1–2 °C.
 - **Fitment:** the Adapt Lab restrictor fits the 1990–97 non-VVTi and 2002+ 3UZ water inlet housing, part **16032-50110**.
 

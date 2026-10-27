@@ -22,7 +22,7 @@
   const LAP = [[12, 22, 5], [6, 28, 4], [20, 18, 7], [8, 25, 5], [10, 30, 4], [9, 20, 10]]; // wot s, corner m/s, off s
 
   const DEFAULTS = {
-    hp: 290, wot: 65, speed: 1.0, tAir: 30, minutes: 20, tStart: 70,
+    hp: 290, wot: 65, vTrack: 141, tAir: 30, minutes: 20, tStart: 70,   // vTrack = lap average speed km/h
     duct: 50,            // 0 none .. 100 perfect -> face velocity = (0.10 + 0.30*duct/100) * car speed
     core: 42,            // radiator core depth mm (Miata frame face 560x340)
     bypass: 28,          // restrictor bore mm; 28 = open (stock), 0 = blocked
@@ -36,20 +36,27 @@
     fc: 0.70, fOil: 0.22,
   };
 
-  function lapProfile(o, dt) {
+  // Lap: six straights. All speeds (corners, top-speed asymptote, start) scale by f; f is solved so the
+  // lap average matches vTrack (f = 1 -> ~141 km/h fast circuit, f ~ 0.4 -> ~60 km/h tight track).
+  function lapAt(o, dt, f) {
     const th = [], vs = [], rs = [];
     const sw = (o.wot / 100) / 0.65, so = (1 - o.wot / 100) / 0.35;
-    const a0 = 5 * (o.hp / 290) ** 0.6, vmax = 65 * o.speed;
-    let v = 22 * o.speed;
+    const a0 = 5 * (o.hp / 290) ** 0.6, vmax = 65 * f;
+    let v = 22 * f, acc = 0;
     for (const [w, vc, off] of LAP) {
       for (let i = 0, n = Math.round(w * sw / dt); i < n; i++) {
-        v += dt * a0 * (1 - (v / vmax) ** 2); th.push(1); vs.push(v); rs.push(rpmFromV(v));
+        v += dt * a0 * (1 - (v / vmax) ** 2); th.push(1); vs.push(v); rs.push(rpmFromV(v)); acc += v;
       }
       for (let i = 0, n = Math.round(off * so / dt); i < n; i++) {
-        v = Math.max(vc * o.speed, v - 9 * dt); th.push(0); vs.push(v); rs.push(rpmFromV(v));
+        v = Math.max(vc * f, v - 9 * dt); th.push(0); vs.push(v); rs.push(rpmFromV(v)); acc += v;
       }
     }
-    return { th, vs, rs };
+    return { th, vs, rs, avg: acc / vs.length * 3.6 };
+  }
+  function lapProfile(o, dt) {
+    let f = o.vTrack / 141, L = lapAt(o, dt, f);
+    for (let k = 0; k < 4 && Math.abs(L.avg - o.vTrack) > 0.5; k++) { f *= o.vTrack / L.avg; L = lapAt(o, dt, f); }
+    return L;
   }
 
   function run(opts) {
@@ -64,7 +71,7 @@
       p0: 150, c_pump: 4.0, k_eng: 4.44,
       k_rad_fixed: 2.4 + kK(3.0, 38) + kK(0.3, 32),
       k_bypass: kK(2.5, 28), k_heater: kK(12, 16),
-      cdA_full: 0.6 * 960e-6, cdA_jig: 0.6 * area(2),
+      cdA_full: 0.6 * Math.PI * 0.034 * 0.010, cdA_jig: 0.6 * area(2),   // ~34 mm valve, 10 mm lift (Toyota spec: >=10 mm at 95C)
       m_metal_cp: 80 * 900, C_oil: 6 * 0.85 * 2100, hA_oil_cool: 800, hA_housing: 15,
       V_eng: 5.5, V_up: 0.8, V_rad: 2.4, V_low: 0.8, V_bp: 0.2, V_mix: 0.3,
       hA_j: 4000, Qj: 3.0, hA_j_min: 800,
@@ -97,6 +104,14 @@
     const log = { t: [], ect: [], oil: [], metal: [], radIn: [], radOut: [], mix: [], lift: [],
       Qr: [], Qb: [], Qh: [], qIn: [], qRad: [], qOc: [], v: [], tPre: [] };
     let qRad = 0, qOc = 0, Tpre = o.tAir;
+    const net = (s, kR) => {   // flow network at pump speed s (=rpm/6000) for radiator-path k
+      const sr = 1 / Math.sqrt(kR), sb = kBp ? 1 / Math.sqrt(kBp) : 0, sh = kH ? 1 / Math.sqrt(kH) : 0;
+      const sum = sr + sb + sh, Q = s * Math.sqrt(P.p0 / (P.c_pump + P.k_eng + 1 / sum ** 2));
+      return { Q, Qr: Q * sr / sum, Qb: Q * sb / sum, Qh: Q * sh / sum };
+    };
+    const kStatFull = kOrif(P.cdA_jig + P.cdA_full), kRestr = o.bypass > 0 ? kRestrictor(o.bypass) : 0;
+    const iWin = Math.max(0, steps - Math.round(Math.min(300, o.minutes * 15) / dt));
+    const H = { n: 0, s: 0, pump: 0, eng: 0, core: 0, hose: 0, stat: 0, bp: 0, restr: 0, heater: 0, Q: 0, Qr: 0, lift: 0 };
     for (let i = 0; i < steps; i++) {
       const j = i % nlap, thr = th[j], v = vs[j], rpm = rs[j];
       const s = rpm * o.pulley / 6000;
@@ -105,10 +120,13 @@
         x = Math.min(1, Math.max(0, (Tsense - o.statOpen) / (statFull - o.statOpen)));
         kR += kOrif(P.cdA_jig + x * P.cdA_full);
       }
-      const sr = 1 / Math.sqrt(kR), sb = kBp ? 1 / Math.sqrt(kBp) : 0, sh = kH ? 1 / Math.sqrt(kH) : 0;
-      const sum = sr + sb + sh, kPar = 1 / sum ** 2;
-      const Q = s * Math.sqrt(P.p0 / (P.c_pump + P.k_eng + kPar));
-      const Qr = Q * sr / sum, Qb = Q * sb / sum, Qh = Q * sh / sum;
+      const { Q, Qr, Qb, Qh } = net(s, kR);
+      if (i >= iWin) {   // pressure-drop bookkeeping over the last 5 min (kPa)
+        H.n++; H.s += s; H.Q += Q; H.Qr += Qr; H.lift += x;
+        H.pump += P.p0 * s * s - P.c_pump * Q * Q; H.eng += P.k_eng * Q * Q;
+        H.core += 2.4 * Qr * Qr; H.hose += (P.k_rad_fixed - 2.4) * Qr * Qr; H.stat += (kR - P.k_rad_fixed) * Qr * Qr;
+        H.bp += P.k_bypass * Qb * Qb; H.restr += kRestr * Qb * Qb; H.heater += kH ? kH * Qh * Qh : 0;
+      }
       const mr = Qr * RHO / 1000, mb = Qb * RHO / 1000, mh = Qh * RHO / 1000, m = Q * RHO / 1000;
 
       const qIn = thr ? o.fc * torqueWot(rpm) * (o.hp / 290) * rpm * 2 * Math.PI / 60 : P.q_off;
@@ -178,6 +196,13 @@
       vAvg: log.v.reduce((p, c) => p + c, 0) / n, vMax: Math.max(...log.v),
       tBoil: boilIdx >= 0 ? log.t[boilIdx] : null, T_boil, ductF,
     };
+    // hydraulics summary, last 5 min averages; plus what a fully open thermostat costs at the same pump speed
+    const m_ = k => H[k] / H.n, sBar = m_('s');
+    const withStat = net(sBar, P.k_rad_fixed + kStatFull), noStat = net(sBar, P.k_rad_fixed);
+    sum.hyd = { pump: m_('pump'), eng: m_('eng'), core: m_('core'), hose: m_('hose'), stat: m_('stat'), bp: m_('bp'),
+      restr: m_('restr'), heater: m_('heater'), Q: m_('Q') * 60, Qr: m_('Qr') * 60, lift: m_('lift') * 100, rpm: sBar * 6000 / o.pulley,
+      statOpen: { k: kStatFull, kRadPath: P.k_rad_fixed + kStatFull, share: kStatFull / (P.k_rad_fixed + kStatFull),
+        dp: kStatFull * withStat.Qr ** 2, QrWith: withStat.Qr * 60, QrWithout: noStat.Qr * 60 } };
     return { opts: o, log, sum };
   }
   root.UZSim = { run, DEFAULTS, kRestrictor };

@@ -52,3 +52,9 @@ RESULT 42mm/0.25: stock 137 (boil 4.2 min) | r18 132 | r14 129 | r10 126 | block
        blocked+stat+heater deleted boils @68 s | delete 123. 60mm/0.35 + r14 + 19-row wide oil cooler own duct: ~93.
 Calculator adds glycol h-factor (1.0 at 50/50), Water Wetter x1.08 coolant-side h, oil stat on/off + set point.
 Pure water + WW: -10C coolant but boil 122C @1.1 bar. WW alone in 50/50: -1.6C.
+
+## Round 4 — thermostat lift 10mm, track speed, thermostat restriction (2026-10-27)
+Stat lift 9 -> 10mm (Toyota spec >=10mm @95C). Stock 136 (boil 4.2 min), r18 132, r14 128, r10 126, blocked 124, delete 123.
+Fully open stat = 25% of radiator-path k: 2.7 kPa stock / 5.2 kPa with r14; removing it: Qr 88->96 L/min (+9%), ECT -1.3..-2.3C.
+Track avg speed slider 50-160 km/h (lap speeds scaled, solved to hit the average). 60 km/h @65% WOT: 201C (non-physical, boils 2 min);
+60 km/h @40% WOT: 144C; recommended build @60/40%: 97C.
