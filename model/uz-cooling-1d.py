@@ -4,14 +4,14 @@
 Loop (inlet-side thermostat, Toyota UZ layout):
   pump -> engine jacket -> outlet node (ECT sensor) -+-> upper hose -> radiator -> lower hose -> THERMOSTAT -+-> inlet housing (mix, stat pellet) -> pump
                                                      +-> bypass 28mm (+ restrictor) -------------------------+
-Heater core: plumbed, no flow -> ignored.
+Heater core: Miata has no heater valve, so it always flows as a second small bypass (--no-heater / case blockedNH = deleted).
 
 Hydraulics: quasi-steady each step. Pump dp = p0*(n/6000)^2 - c*Q^2, branches k*Q^2
 (k in kPa/(L/s)^2). Thermal: engine metal node + jacket coolant node + plug-flow
 cells for hoses/radiator/bypass. Radiator: air is Cmin (per-cell eps = 1-exp(-NTU)).
 
 Usage: uz-cooling-1d.py CASE [--fc 0.55] [--duct 0.22] [--out dir]
-  CASE: stock | r18 | r14 | r10 | blocked | delete   (restrictor bore in mm)
+  CASE: stock | r18 | r14 | r10 | blocked | blockedNH (blocked + heater deleted) | delete   (rNN = restrictor bore mm)
 """
 import argparse, json, math, os
 import numpy as np
@@ -41,6 +41,7 @@ P = dict(
     k_hoses=k_from_K(3.0, 38),           # upper+lower 38mm, ~3 m + bends
     k_necks=k_from_K(0.3, 32),           # 38->32->38 at Miata rad necks
     k_bypass=k_from_K(2.5, 28),          # 28mm bypass, entry+2 bends+exit
+    k_heater=k_from_K(12, 16),           # heater core loop, 16mm hoses (Miata: no valve, always flows)
     stat_open=82.0, stat_full=90.0, stat_tau=15.0,
     hA_housing=15.0,                     # W/K conduction engine->inlet housing/pellet (alu housing bolted to block)
     stat_cdA_full=0.6 * 960e-6,          # ~34mm valve x 9mm lift curtain
@@ -98,15 +99,17 @@ def eps_xflow(NTU, Cr):
         return 1 - math.exp(-NTU)
     return 1 - math.exp((NTU ** 0.22 / Cr) * (math.exp(-Cr * NTU ** 0.78) - 1))
 
-def run(case, fc=0.70, duct=0.25, t_end=1200.0, dt=0.02, overrides=None, oc='none'):
+def run(case, fc=0.70, duct=0.25, t_end=1200.0, dt=0.02, overrides=None, oc='none', heater=True):
     p = dict(P, **(overrides or {}))
     has_stat = case != 'delete'
     if case in ('stock',):
         k_bp = p['k_bypass']
     elif case.startswith('r'):
         k_bp = p['k_bypass'] + k_restrictor(float(case[1:]))
-    elif case in ('blocked', 'delete'):
+    elif case in ('blocked', 'delete', 'blockedNH'):
         k_bp = None
+        if case == 'blockedNH':
+            heater = False
     else:
         raise SystemExit(f'unknown case {case}')
 
@@ -133,16 +136,14 @@ def run(case, fc=0.70, duct=0.25, t_end=1200.0, dt=0.02, overrides=None, oc='non
         else:
             x = 1.0
             k_r = k_rad_fixed
-        if k_bp is None:
-            k_par = k_r
-            Qr_frac = 1.0
-        else:
-            sr, sb = 1 / math.sqrt(k_r), 1 / math.sqrt(k_bp)
-            k_par = 1 / (sr + sb) ** 2
-            Qr_frac = sr / (sr + sb)
+        sr = 1 / math.sqrt(k_r)
+        sb = 0.0 if k_bp is None else 1 / math.sqrt(k_bp)
+        sh = 1 / math.sqrt(p['k_heater']) if heater else 0.0
+        ssum = sr + sb + sh
+        k_par = 1 / ssum ** 2
         Q = s * math.sqrt(p['p0'] / (p['c_pump'] + p['k_eng'] + k_par))   # L/s
-        Qr, Qb = Q * Qr_frac, Q * (1 - Qr_frac)
-        mr, mb, m = Qr * RHO / 1000, Qb * RHO / 1000, Q * RHO / 1000      # kg/s
+        Qr, Qb, Qh = Q * sr / ssum, Q * sb / ssum, Q * sh / ssum
+        mr, mb, mh, m = Qr * RHO / 1000, Qb * RHO / 1000, Qh * RHO / 1000, Q * RHO / 1000      # kg/s
 
         # heat input
         q_in = fc * torque_wot(rpm) * rpm * 2 * math.pi / 60 if thr else p['q_off']
@@ -202,12 +203,12 @@ def run(case, fc=0.70, duct=0.25, t_end=1200.0, dt=0.02, overrides=None, oc='non
             bp = adv(bp, T_eng, mb, p['V_bp'])
         # inlet housing mix node (pellet sits here, bathed by bypass)
         C_mix = p['V_mix'] / 1000 * RHO * CP
-        T_mix += dt * (mr * CP * (low[-1] - T_mix) + mb * CP * (bp[-1] - T_mix) + p['hA_housing'] * (T_metal - T_mix)) / C_mix
+        T_mix += dt * (mr * CP * (low[-1] - T_mix) + mb * CP * (bp[-1] - T_mix) + mh * CP * (T_eng - T_mix) + p['hA_housing'] * (T_metal - T_mix)) / C_mix
         T_sense += dt * (T_mix - T_sense) / p['stat_tau']
 
         if i % int(1.0 / dt) == 0:
             log.append(dict(t=i * dt, T_ect=T_eng, T_metal=T_metal, T_rad_in=up[-1], T_rad_out=rad[-1],
-                            T_mix=T_mix, T_oil=T_oil, q_oc=q_oc / 1000, T_pre=T_pre, lift=x, Q=Q * 60, Qr=Qr * 60, Qb=Qb * 60,
+                            T_mix=T_mix, T_oil=T_oil, q_oc=q_oc / 1000, T_pre=T_pre, lift=x, Q=Q * 60, Qr=Qr * 60, Qb=Qb * 60, Qh=Qh * 60,
                             q_in=q_in / 1000, q_rad=q_rad / 1000, v=v, rpm=rpm, v_face=v_face))
     return log
 
@@ -239,11 +240,12 @@ if __name__ == '__main__':
     ap.add_argument('--tair', type=float, default=30.0)
     ap.add_argument('--core', type=float, default=42.0, help='radiator core depth mm')
     ap.add_argument('--oc', default='none', choices=['none', 'front', 'side'], help='oil cooler: none | front (covers 20%% of rad) | side (own duct)')
+    ap.add_argument('--no-heater', action='store_true', help='heater core deleted (default: heater loop flows, as on a Miata)')
     ap.add_argument('--out', default=None)
     a = ap.parse_args()
-    log = run(a.case, a.fc, a.duct, a.t, overrides=dict(t_air=a.tair, core_mm=a.core), oc=a.oc)
+    log = run(a.case, a.fc, a.duct, a.t, overrides=dict(t_air=a.tair, core_mm=a.core), oc=a.oc, heater=not a.no_heater)
     s = summarize(log)
-    print('RESULT', a.case, f"fc={a.fc} duct={a.duct} tair={a.tair} core={a.core} oc={a.oc}", json.dumps({k: (round(v, 1) if isinstance(v, float) else v) for k, v in s.items()}))
+    print('RESULT', a.case, f"fc={a.fc} duct={a.duct} tair={a.tair} core={a.core} oc={a.oc} heater={not a.no_heater}", json.dumps({k: (round(v, 1) if isinstance(v, float) else v) for k, v in s.items()}))
     if a.out:
         os.makedirs(a.out, exist_ok=True)
         with open(os.path.join(a.out, f'{a.case}_fc{a.fc}_d{a.duct}' + ('' if a.oc == 'none' else f'_oc{a.oc}') + '.json'), 'w') as f:

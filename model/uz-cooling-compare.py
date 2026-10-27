@@ -8,10 +8,10 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 d, out = sys.argv[1:3]
-CASES = ['stock', 'r18', 'r14', 'r10', 'blocked', 'delete']
+CASES = ['stock', 'r18', 'r14', 'r10', 'blocked', 'blockedNH', 'delete']
 LABEL = dict(stock='no restrictor', r18='18 mm', r14='14 mm', r10='10 mm',
-             blocked='blocked + stat', delete='delete (no stat, blocked)')
-COL = dict(stock='k', r18='tab:blue', r14='tab:green', r10='tab:olive', blocked='tab:red', delete='tab:purple')
+             blocked='blocked + stat', blockedNH='blocked + stat,\nheater deleted', delete='delete (no stat, blocked)')
+COL = dict(stock='k', r18='tab:blue', r14='tab:green', r10='tab:olive', blocked='tab:orange', blockedNH='tab:red', delete='tab:purple')
 BOIL = 128.0
 load = lambda f: json.load(open(f))
 
@@ -33,7 +33,7 @@ a0.axhline(BOIL, color='k', ls=':', lw=1); a0.text(0.1, BOIL + 1, 'boil 50/50 @ 
 a0.axhspan(82, 90, color='green', alpha=0.08)
 a0.set_ylim(60, 160); a0.set_xlim(0, 20); a0.set_ylabel('ECT °C'); a0.set_xlabel('session time [min]')
 a0.legend(fontsize=9, ncol=3, loc='lower right'); a0.grid(alpha=.3)
-a0.set_title('Same session for every case: 30°C air, 65% WOT, start 70°C, IL 42mm rad (nominal: heat frac 0.70, duct 0.25)', fontsize=10)
+a0.set_title('Same session: fast track (avg 141 km/h), 30°C air, 65% WOT, start 70°C, IL 42mm rad, heater loop flowing (heat 0.70, duct 0.25)', fontsize=10)
 
 x = np.arange(len(CASES))
 show = [min(e, 160) for e in ends]

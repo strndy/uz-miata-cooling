@@ -3,7 +3,7 @@
 cd "$(dirname "$0")" && python3 -c "
 s=open('app.html').read(); j=open('sim.js').read()
 assert '</script' not in j
-body=s.replace('/*SIM*/', j)
+body=s.replace('/*SIM*/', j).replace('/*SIMTXT*/', j)
 head='''<!doctype html>
 <html lang=\"en\"><head><meta charset=\"utf-8\">
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\">

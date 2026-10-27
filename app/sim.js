@@ -26,11 +26,13 @@
     duct: 50,            // 0 none .. 100 perfect -> face velocity = (0.10 + 0.30*duct/100) * car speed
     core: 42,            // radiator core depth mm (Miata frame face 560x340)
     bypass: 28,          // restrictor bore mm; 28 = open (stock), 0 = blocked
-    heater: false,       // heater valve open = extra bypass
+    heater: true,        // heater loop flows (Miata has no heater valve); false = heater deleted
     stat: true, statOpen: 82,
     pulley: 1.0,         // pump speed / crank speed
     glycol: 50, cap: 1.1,
-    ocPct: 0, ocThick: 42, ocMount: 'front',
+    ww: false,           // Water Wetter (surfactant): ~+8% coolant-side heat transfer
+    ocPct: 0, ocThick: 42, ocMount: 'front', ocModel: 'custom',
+    ocStat: true, ocOpen: 80,   // oil thermostat (sandwich plate): opens at ocOpen, full at +10
     fc: 0.70, fOil: 0.22,
   };
 
@@ -54,6 +56,9 @@
     const o = Object.assign({}, DEFAULTS, opts);
     const dt = 0.02, steps = Math.round(o.minutes * 60 / dt), every = Math.round(1 / dt);
     const CP = 4190 - 11.8 * o.glycol;
+    // coolant-side heat transfer vs mix: glycol is more viscous, worse conductor (h ~ -35% at 50/50 vs water).
+    // Normalised to 1.0 at 50/50 so the calibration holds; Water Wetter adds ~8%.
+    const hMul = (1 - 0.007 * o.glycol) / 0.65 * (o.ww ? 1.08 : 1);
     const T_boil = 100 + 0.12 * o.glycol + 20 * o.cap;
     const P = {
       p0: 150, c_pump: 4.0, k_eng: 4.44,
@@ -65,7 +70,7 @@
       hA_j: 4000, Qj: 3.0, hA_j_min: 800,
       face: 0.56 * 0.34, hA_air_ref: 1700, v_ref: 7, hA_cool_ref: 6000, Qc_ref: 2, hA_cool_min: 1500,
       fan_min: 2.5, q_off: 8000 * o.hp / 290,
-      oc_block: 0.75, oc_flow: 15, oc_open: 80, oc_full: 90,
+      oc_block: 0.75, oc_flow: 15, oc_open: o.ocOpen, oc_full: o.ocOpen + 10,
     };
     const ductF = 0.10 + 0.30 * o.duct / 100;
     const dpt = o.core / 42;
@@ -107,7 +112,7 @@
       const mr = Qr * RHO / 1000, mb = Qb * RHO / 1000, mh = Qh * RHO / 1000, m = Q * RHO / 1000;
 
       const qIn = thr ? o.fc * torqueWot(rpm) * (o.hp / 290) * rpm * 2 * Math.PI / 60 : P.q_off;
-      const hAj = Math.max(P.hA_j_min, P.hA_j * (Q / P.Qj) ** 0.8);
+      const hAj = Math.max(P.hA_j_min, P.hA_j * (Q / P.Qj) ** 0.8) * hMul;
       const qmc = hAj * (Tmetal - Teng);
       const qoc_ = P.hA_oil_cool * (Toil - Teng);
       Tmetal += dt * ((1 - o.fOil) * qIn - qmc) / P.m_metal_cp;
@@ -115,13 +120,13 @@
 
       // air side
       const vFace = Math.max(P.fan_min, ductF * v);
-      const hAc = Math.max(P.hA_cool_min, P.hA_cool_ref * (Qr / P.Qc_ref) ** 0.8) * dpt;
+      const hAc = Math.max(P.hA_cool_min, P.hA_cool_ref * (Qr / P.Qc_ref) ** 0.8) * dpt * hMul;
       const fr = oc === 'front' ? ocFrac : 0, vb = vFace * P.oc_block;
       qOc = 0; Tpre = o.tAir;
       if (oc !== 'none') {
         const vOc = oc === 'front' ? vb : vFace;
         const Ca = RHO_AIR * P.face * ocFrac * vOc * CP_AIR;
-        const xo = Math.min(1, Math.max(0.05, (Toil - P.oc_open) / (P.oc_full - P.oc_open)));
+        const xo = o.ocStat ? Math.min(1, Math.max(0.05, (Toil - P.oc_open) / (P.oc_full - P.oc_open))) : 1;
         const Co = xo * P.oc_flow / 60000 * 870 * 2100;
         const vol = (ocFrac / 0.2) * (o.ocThick / 42);
         const hAa = P.hA_air_ref * ocFrac * (vOc / P.v_ref) ** 0.6 * (o.ocThick / 42) ** 0.8;
@@ -170,7 +175,7 @@
       ectEnd: avgLast(log.ect), ectMax: Math.max(...log.ect), oilEnd: avgLast(log.oil), metalMax: Math.max(...log.metal),
       Qr: avgAfter(log.Qr, 120), Qb: avgAfter(log.Qb, 120), Qh: avgAfter(log.Qh, 120),
       qIn: log.qIn.reduce((p, c) => p + c, 0) / n, qRad: avgLast(log.qRad), qOc: avgLast(log.qOc), tPre: avgLast(log.tPre),
-      vAvg: log.v.reduce((p, c) => p + c, 0) / n,
+      vAvg: log.v.reduce((p, c) => p + c, 0) / n, vMax: Math.max(...log.v),
       tBoil: boilIdx >= 0 ? log.t[boilIdx] : null, T_boil, ductF,
     };
     return { opts: o, log, sum };

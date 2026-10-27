@@ -56,6 +56,11 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
 .switch input:checked + span { background: var(--accent); border-color: var(--accent); }
 .switch input:checked + span::after { transform: translateX(18px); background: var(--accent-ink); }
 .switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sel { width: 100%; font: 500 14px var(--f-body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 7px 8px; }
+.sel:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn.reset { flex: 0 0 auto; padding-inline: 18px; }
+.live { font: 500 11px/1 var(--f-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.live.on { color: var(--warn); }
 .seg { display: flex; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
 .seg button { flex: 1; border: 0; background: var(--surface); color: var(--ink); font: 500 13px var(--f-body); padding: 7px 6px; cursor: pointer; }
 .seg button + button { border-left: 1px solid var(--line); }
@@ -108,6 +113,7 @@ input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offs
 <div id="app"><div class="wrap"><div class="empty">Loading the cooling model…</div></div></div>
 
 <script>/*SIM*/</script>
+<script id="simsrc" type="text/plain">/*SIMTXT*/</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"></script>
@@ -123,13 +129,22 @@ const html = htm.bind(React.createElement);
 const D = UZSim.DEFAULTS;
 const RUN_COLORS = ['var(--hot)', 'var(--cold)', 'var(--accent)', 'var(--violet)', 'var(--oil)', 'var(--muted)'];
 
+// Typical stacked-plate oil coolers (Setrab / Mocal size classes). Core size approximate: 7.3 mm per row, 50 mm thick.
+const OC_MODELS = [
+  { id: 'custom', name: 'Custom size (slider below)' },
+  ...[[10, 210], [13, 210], [16, 210], [19, 210], [25, 210], [19, 330], [25, 330], [34, 330]].map(([r, w]) => {
+    const h = Math.round(r * 7.3);
+    return { id: `${r}-${w}`, w, h, t: 50, short: `${r}-row${w > 300 ? ' wide' : ''}`,
+      name: `${r}-row${w > 300 ? ' wide' : ''} · core ≈${w}×${h}×50 mm`, pct: Math.round(w * h / (560 * 340) * 1000) / 10 };
+  }),
+];
 const PRESETS = [
   { name: 'Stock (no restrictor)', o: {} },
   { name: '14 mm restrictor', o: { bypass: 14 } },
   { name: '10 mm restrictor', o: { bypass: 10 } },
   { name: 'Blocked + thermostat', o: { bypass: 0 } },
   { name: 'Delete kit', o: { bypass: 0, stat: false } },
-  { name: 'Recommended build', o: { bypass: 14, core: 60, duct: 83, ocPct: 20, ocMount: 'side' } },
+  { name: 'Recommended build', o: { bypass: 14, core: 60, duct: 83, ocPct: 16.4, ocThick: 50, ocModel: '19-330', ocMount: 'side' } },
 ];
 
 const ductWord = d => d < 15 ? 'none, air spills around' : d < 40 ? 'loose shroud' : d < 65 ? 'basic shroud' : d < 88 ? 'sealed duct' : 'sealed duct + hood vent';
@@ -138,8 +153,12 @@ function describe(o) {
   p.push(o.bypass <= 0 ? 'bypass blocked' : o.bypass >= 28 ? 'bypass open' : `${o.bypass} mm restrictor`);
   p.push(o.stat ? `stat ${o.statOpen}°C` : 'no stat');
   p.push(`${o.core} mm rad`, `duct ${o.duct}%`);
-  if (o.ocPct > 0) p.push(`oil cooler ${o.ocPct}% ${o.ocMount === 'front' ? 'front' : 'own duct'}`);
-  if (o.heater) p.push('heater open');
+  if (o.ocPct > 0) { const m = OC_MODELS.find(x => x.id === o.ocModel); p.push(`oil cooler ${m && m.w ? m.short : o.ocPct + '%'} ${o.ocMount === 'front' ? 'front' : 'own duct'}`); }
+  if (!o.heater) p.push('heater deleted');
+  if (o.glycol !== D.glycol) p.push(`${o.glycol}% glycol`);
+  if (o.ww) p.push('Water Wetter');
+  if (o.ocPct > 0 && !o.ocStat) p.push('no oil stat');
+  if (o.ocPct > 0 && o.ocStat && o.ocOpen !== D.ocOpen) p.push(`oil stat ${o.ocOpen}°C`);
   if (o.tAir !== D.tAir) p.push(`${o.tAir}°C air`);
   if (o.hp !== D.hp) p.push(`${o.hp} hp`);
   if (o.wot !== D.wot) p.push(`${o.wot}% WOT`);
@@ -210,22 +229,44 @@ function App() {
   const [band, setBand] = useState(null);
   const [pinned, setPinned] = useState([]);
   const [busy, setBusy] = useState(false);
-  const [dirty, setDirty] = useState(false);
-  const set = k => v => { setO(p => ({ ...p, [k]: v })); setDirty(true); };
+  const set = k => v => setO(p => ({ ...p, [k]: v }));
 
-  const simulate = useCallback((opts, scroll) => {
-    setBusy(true);
-    setTimeout(() => {
-      const r = UZSim.run(opts);
-      const lo = UZSim.run({ ...opts, fc: Math.max(0.3, opts.fc - 0.1) }).sum.ectEnd;
-      const hi = UZSim.run({ ...opts, fc: opts.fc + 0.1 }).sum.ectEnd;
-      setCur({ ...r, label: describe(r.opts) }); setBand([lo, hi]); setBusy(false); setDirty(false);
-      if (scroll && window.innerWidth < 860) { const m = document.getElementById('results'); if (m) m.scrollIntoView({ block: 'start' }); }
-    }, 20);
-  }, []);
-  useEffect(() => { simulate(D); }, []);
+  // Live engine: sim runs in a Web Worker so sliders stay smooth. Only the newest settings are computed;
+  // the fc ±0.1 range is computed once the sliders rest.
+  const eng = useRef(null);
+  if (!eng.current) {
+    const E = { worker: null, running: false, pending: null, seq: 0, cb: null };
+    try {
+      const src = document.getElementById('simsrc').textContent + `
+        self.onmessage = e => { const { id, kind, opts } = e.data;
+          if (kind === 'main') self.postMessage({ id, kind, r: UZSim.run(opts) });
+          else self.postMessage({ id, kind, band: [UZSim.run({ ...opts, fc: Math.max(0.3, opts.fc - 0.1) }).sum.ectEnd,
+                                                   UZSim.run({ ...opts, fc: opts.fc + 0.1 }).sum.ectEnd] }); };`;
+      E.worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+    } catch (err) { E.worker = null; }
+    E.send = (kind, opts, id) => {
+      E.running = true;
+      if (E.worker) E.worker.postMessage({ id, kind, opts });
+      else setTimeout(() => E.onmsg({ id, kind, ...(kind === 'main' ? { r: UZSim.run(opts) }
+        : { band: [UZSim.run({ ...opts, fc: Math.max(0.3, opts.fc - 0.1) }).sum.ectEnd, UZSim.run({ ...opts, fc: opts.fc + 0.1 }).sum.ectEnd] }) }), 0);
+    };
+    E.request = opts => { const id = ++E.seq; if (E.running) E.pending = { id, opts }; else E.send('main', opts, id); };
+    E.onmsg = d => {
+      E.running = false;
+      E.cb && E.cb(d);
+      if (E.pending) { const p = E.pending; E.pending = null; E.send('main', p.opts, p.id); }
+      else if (d.kind === 'main' && d.id === E.seq) E.send('band', d.r.opts, d.id);
+    };
+    if (E.worker) E.worker.onmessage = e => E.onmsg(e.data);
+    eng.current = E;
+  }
+  eng.current.cb = d => {
+    if (d.kind === 'main') { setCur({ ...d.r, label: describe(d.r.opts) }); setBand(null); setBusy(d.id !== eng.current.seq); }
+    else if (d.id === eng.current.seq) { setBand(d.band); setBusy(false); }
+  };
+  useEffect(() => { setBusy(true); eng.current.request(o); }, [o]);
   const pin = () => { if (!cur) return; setPinned(p => [...p.filter(x => x.label !== cur.label), cur].slice(-5)); };
-  const applyPreset = po => { const n = { ...o, bypass: 28, stat: true, ...po }; setO(n); simulate(n, true); };
+  const applyPreset = po => setO({ ...D, ...po });
 
   const s = cur && cur.sum;
   const state = !s ? null : (s.tBoil != null || s.ectEnd >= s.T_boil) ? 'crit' : s.ectEnd > 112 || s.oilEnd > 135 ? 'warn' : 'good';
@@ -237,7 +278,7 @@ function App() {
 
   return html`<div class="wrap">
     <header>
-      <h1>3UZ Miata Cooling Lab<small>1D loop model · 3UZ-FE NA · IL Motorsport frame radiator · inlet-side thermostat</small></h1>
+      <h1>3UZ Miata Cooling Lab<small>1D loop model · 3UZ-FE NA · IL Motorsport frame radiator · fast track, avg ≈141 km/h</small></h1>
     </header>
     <div class="grid">
       <aside class="rail">
@@ -251,9 +292,17 @@ function App() {
           <${Toggle} id="stat" label="Thermostat fitted" checked=${o.stat} onChange=${set('stat')} />
           <${Slider} id="statOpen" label="Thermostat opening temp" value=${o.statOpen} min=${60} max=${95} unit="°C" disabled=${!o.stat}
             fmt=${v => `${v}–${v + 8}°C`} hint="Starts opening at this temp, fully open 8°C higher. Stock: 82–90." onChange=${set('statOpen')} />
-          <${Toggle} id="heater" label="Heater valve open" checked=${o.heater} onChange=${set('heater')} hint="Heater core flow is a second path that skips the radiator." />
+          <${Toggle} id="heaterDel" label="Heater deleted" checked=${!o.heater} onChange=${v => set('heater')(!v)}
+            hint="A Miata has no heater valve, so unless the heater is deleted its core always flows: a small second bypass around the radiator." />
           <${Slider} id="pulley" label="Water pump speed" value=${o.pulley} min=${0.7} max=${1.3} step=${0.05} fmt=${v => '×' + v.toFixed(2)}
             ends=${['underdrive', 'overdrive']} onChange=${set('pulley')} />
+        <//>
+        <${Group} title="Coolant" open=${true}>
+          <${Slider} id="glycol" label="Glycol (antifreeze) share" value=${o.glycol} min=${0} max=${70} step=${5} unit="%" ends=${['pure water', '70%']}
+            hint=${`Less glycol carries and transfers heat better but boils earlier. Boiling point now ${(100 + 0.12 * o.glycol + 20 * o.cap).toFixed(0)}°C.`} onChange=${set('glycol')} />
+          <${Toggle} id="ww" label="Water Wetter added" checked=${o.ww} onChange=${set('ww')}
+            hint="Surfactant: about 8% better heat transfer on the coolant side. Mostly lowers metal temps; the coolant number moves little because the radiator air side is the limit." />
+          <${Slider} id="cap" label="Radiator cap" value=${o.cap} min=${0.8} max=${1.6} step=${0.1} fmt=${v => v.toFixed(1) + ' bar'} onChange=${set('cap')} />
         <//>
         <${Group} title="Radiator and air" open=${true}>
           <${Slider} id="duct" label="Radiator ducting" value=${o.duct} min=${0} max=${100} unit="%"
@@ -263,9 +312,19 @@ function App() {
           <${Slider} id="tAir" label="Air temperature" value=${o.tAir} min=${0} max=${45} unit="°C" onChange=${set('tAir')} />
         <//>
         <${Group} title="Oil cooler" open=${true}>
-          <${Slider} id="ocPct" label="Size (share of radiator face)" value=${o.ocPct} min=${0} max=${50} unit="%"
-            hint=${o.ocPct > 0 ? `≈ ${rows}-row stacked plate (330 mm wide, 7.2 mm row pitch)` : 'No oil cooler: all oil heat goes into the coolant through the block.'} onChange=${set('ocPct')} />
-          <${Slider} id="ocThick" label="Core thickness" value=${o.ocThick} min=${20} max=${80} unit=" mm" disabled=${o.ocPct === 0} onChange=${set('ocThick')} />
+          <div class="ctl"><label for="ocModel">Cooler size</label>
+            <select id="ocModel" class="sel" value=${o.ocModel} onChange=${e => { const m = OC_MODELS.find(x => x.id === e.target.value);
+              setO(p => ({ ...p, ocModel: m.id, ...(m.w ? { ocPct: m.pct, ocThick: m.t } : {}) })); }}>
+              ${OC_MODELS.map(m => html`<option value=${m.id}>${m.name}${m.pct ? ` (${m.pct}% of rad)` : ''}</option>`)}
+            </select>
+            <div class="hint">Typical stacked-plate sizes (Setrab / Mocal classes), approximate core dimensions.</div></div>
+          <${Slider} id="ocPct" label="Size (share of radiator face)" value=${o.ocPct} min=${0} max=${50} step=${0.5} unit="%"
+            hint=${o.ocPct > 0 ? `≈ ${rows}-row stacked plate (330 mm wide, 7.2 mm row pitch)` : 'No oil cooler: all oil heat goes into the coolant through the block.'} onChange=${v => { setO(p => ({ ...p, ocPct: v, ocModel: 'custom' })); }} />
+          <${Slider} id="ocThick" label="Core thickness" value=${o.ocThick} min=${20} max=${80} unit=" mm" disabled=${o.ocPct === 0} onChange=${v => { setO(p => ({ ...p, ocThick: v, ocModel: 'custom' })); }} />
+          <${Toggle} id="ocStat" label="Oil thermostat (sandwich plate)" checked=${o.ocStat} onChange=${set('ocStat')}
+            hint="Off: oil always flows through the cooler. Mostly changes warm-up and cool days, not the hot steady state." />
+          <${Slider} id="ocOpen" label="Oil thermostat opens at" value=${o.ocOpen} min=${70} max=${105} unit="°C" disabled=${o.ocPct === 0 || !o.ocStat}
+            fmt=${v => `${v}–${v + 10}°C`} hint="Common plates: 80, 85 or 90°C." onChange=${set('ocOpen')} />
           <div class=${'ctl' + (o.ocPct === 0 ? ' off' : '')}><label>Mounting</label>
             <div class="seg" role="group" aria-label="Oil cooler mounting">
               <button aria-pressed=${o.ocMount === 'front'} onClick=${() => set('ocMount')('front')}>In front of radiator</button>
@@ -276,11 +335,10 @@ function App() {
         <${Group} title="Engine and track" open=${false}>
           <${Slider} id="hp" label="Engine power" value=${o.hp} min=${200} max=${450} step=${10} unit=" hp" hint="3UZ-FE stock: 290 hp" onChange=${set('hp')} />
           <${Slider} id="wot" label="Full throttle share of lap" value=${o.wot} min=${30} max=${85} unit="%" onChange=${set('wot')} />
-          <${Slider} id="speed" label="Track speed" value=${o.speed} min=${0.7} max=${1.3} step=${0.05} fmt=${v => '×' + v.toFixed(2)} ends=${['tight', 'fast']} onChange=${set('speed')} />
+          <${Slider} id="speed" label="Track speed" value=${o.speed} min=${0.7} max=${1.3} step=${0.05} fmt=${v => '×' + v.toFixed(2)} ends=${['tight', 'faster']} onChange=${set('speed')}
+            hint=${'×1.00 = fast circuit, avg ≈141 km/h, top ≈225 km/h' + (s ? ` · last run: avg ${s.vAvg.toFixed(0)}, top ${s.vMax.toFixed(0)} km/h` : '') + '. Slower tracks mean less air through the radiator.'} />
           <${Slider} id="minutes" label="Session length" value=${o.minutes} min=${5} max=${40} unit=" min" onChange=${set('minutes')} />
           <${Slider} id="tStart" label="Start coolant temp" value=${o.tStart} min=${20} max=${95} unit="°C" onChange=${set('tStart')} />
-          <${Slider} id="glycol" label="Glycol in coolant" value=${o.glycol} min=${0} max=${70} step=${5} unit="%" onChange=${set('glycol')} />
-          <${Slider} id="cap" label="Radiator cap" value=${o.cap} min=${0.8} max=${1.6} step=${0.1} fmt=${v => v.toFixed(1) + ' bar'} onChange=${set('cap')} />
         <//>
         <${Group} title="Model calibration" open=${false}>
           <${Slider} id="fc" label="Engine heat into coolant + oil" value=${o.fc} min=${0.5} max=${0.9} step=${0.05} fmt=${v => `${v.toFixed(2)} × power`}
@@ -288,15 +346,15 @@ function App() {
           <${Slider} id="fOil" label="Share of that heat into oil" value=${o.fOil} min=${0.1} max=${0.35} step=${0.01} fmt=${v => Math.round(v * 100) + '%'} onChange=${set('fOil')} />
         <//>
         <div class="actions">
-          <button class="btn primary" disabled=${busy} onClick=${() => simulate(o, true)}>${busy ? 'Running…' : dirty ? 'Plot' : 'Plot again'}</button>
-          <button class="btn ghost" disabled=${!cur || busy} onClick=${pin}>Keep to compare</button>
+          <button class="btn primary" disabled=${!cur} onClick=${pin}>Keep to compare</button>
+          <button class="btn ghost reset" onClick=${() => setO({ ...D })} aria-label="Reset all settings to defaults">Reset</button>
         </div>
       </aside>
 
       <main class="main" id="results">
         ${!s ? html`<div class="panel empty">Running the first session…</div>` : html`
         <div class="verdict"><span class=${'pill ' + state}>${state === 'crit' ? 'Boils' : state === 'warn' ? 'Marginal' : 'OK'}</span>
-          <p><b>${cur.label}</b><br/>${verdict}${dirty ? ' Settings changed: press Plot to update.' : ''}</p></div>
+          <p><b>${cur.label}</b><br/>${verdict}</p><span class=${'live' + (busy ? ' on' : '')} aria-live="polite">${busy ? 'updating…' : 'live'}</span></div>
         <div class="stats">
           <div class="stat"><span class="k">Coolant, last 5 min</span><span class="v">${s.ectEnd.toFixed(0)}<small> °C</small></span>
             <span class="s">${band ? `range ${band[0].toFixed(0)}–${band[1].toFixed(0)}°C` : ''}</span></div>
@@ -331,7 +389,7 @@ function App() {
               ...(s.qOc > 0.05 ? [{ y: lapAvg(cur.log.qOc), color: 'var(--oil)', w: 2, label: 'oil cooler out' }] : [])]} /></div>
         </div>
         <div class="panel notes">
-          <p><b>How to read this.</b> Each Plot runs a 20 min track session: a 100 s lap with six straights, starting with the thermostat closed. Plot also runs the session again with engine heat ±0.1, which gives the range under the coolant number. Absolute temperatures are a calibrated estimate (±20°C, no 3UZ logs yet). Differences between setups are the reliable output.</p>
+          <p><b>How to read this.</b> Every change re-runs a 20 min session on a fast circuit: a 100 s lap with six straights, average ≈141 km/h, top ≈225 km/h, starting with the thermostat closed. Use Track speed for slower tracks. When the sliders rest it also re-runs with engine heat ±0.1, which gives the range under the coolant number. Absolute temperatures are a calibrated estimate (±20°C, no 3UZ logs yet). Differences between setups are the reliable output.</p>
           <p>Model: pump curve, block, radiator, 38→32 mm necks, bypass and restrictor solved as a flow network every 20 ms. Wax thermostat with a 15 s lag on the pump-inlet side. Radiator cells with air as the limiting side. Separate oil and metal nodes. Readings above the boiling point are not physical: the coolant would boil over first.</p>
           <p>Open source: <a href="https://github.com/strndy/uz-miata-cooling" target="_blank" rel="noopener" class="src">github.com/strndy/uz-miata-cooling</a>. The README explains every equation and the calibration sources.</p>
         </div>`}

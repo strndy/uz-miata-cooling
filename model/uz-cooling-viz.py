@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 d, case, out = sys.argv[1:4]
 runs = [json.load(open(f)) for f in sorted(glob.glob(os.path.join(d, f'{case}_fc*_d*.json')))]
-nom = next(r for r in runs if r['fc'] == 0.70 and r['duct'] == 0.25)
+nom = next(r for r in runs if r['fc'] == 0.7 and r['duct'] == 0.25)
 L = nom['log']; t = np.array([r['t'] for r in L]) / 60
 g = lambda k, log=L: np.array([r[k] for r in log])
 

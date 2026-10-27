@@ -45,3 +45,10 @@ RESULT oc 42mm/0.25 ECT(oil): stock none 135(162) front 130(140) side 120(130); 
        delete 122(149) 119(131) 110(121). Deltas hold across fc 0.6-0.8.
 RESULT oc 60mm/0.35 ECT(oil): stock 103(130) 101(113) 95(107); r14 97(124) 96(109) 93(105); delete 92(119) 91(105) 85(99)
 Verdict: front-mounted cooler = coolant -3..-5C, oil -17..-22C. Own duct = coolant -10..-15C. Without a cooler oil ~150-160C on 42mm rad.
+
+## Round 3 — heater loop always flows (2026-10-27)
+Miata has no heater valve: heater core (16mm, K~12) now always flows as a second small bypass (~16-29 L/min).
+RESULT 42mm/0.25: stock 137 (boil 4.2 min) | r18 132 | r14 129 | r10 126 | blocked+stat 124 (heater = pellet's hot feed) |
+       blocked+stat+heater deleted boils @68 s | delete 123. 60mm/0.35 + r14 + 19-row wide oil cooler own duct: ~93.
+Calculator adds glycol h-factor (1.0 at 50/50), Water Wetter x1.08 coolant-side h, oil stat on/off + set point.
+Pure water + WW: -10C coolant but boil 122C @1.1 bar. WW alone in 50/50: -1.6C.
